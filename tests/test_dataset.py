@@ -12,7 +12,7 @@ from tiny_tf_transformer.text_datasets.translation_datasets import (
     add_start_end,
     cleanup_text,
     BertTokenizer,
-    CharacterTokenizer
+    CharacterTokenizer,
 )
 
 
@@ -53,6 +53,7 @@ world
         f.write(dummy_vocab)
 
     return "/tmp/dummy_vocab.txt"
+
 
 def test_write_vocab_to_file(dummy_text_batch: tf.data.Dataset):
     write_vocab_to_file(dummy_text_batch, 100, "/tmp/test_vocab.txt")
@@ -153,14 +154,13 @@ def test_zh_en_wmt19():
         == "hello , world !"
     )
 
-def test_custom_tokenizer_class(dummy_vocab_path: str):
 
+def test_custom_tokenizer_class(dummy_vocab_path: str):
     en_tokenizer_pre_save = BertTokenizer(dummy_vocab_path, lower_case=True)
 
     # test save and load using saved model
     tf.saved_model.save(en_tokenizer_pre_save, "/tmp/test_custom_tokenizer_class")
     en_tokenizer = tf.saved_model.load("/tmp/test_custom_tokenizer_class")
-
 
     tokens = en_tokenizer.tokenize(["hello , world !"])
     token_lookup = en_tokenizer.lookup(tokens)
@@ -169,12 +169,16 @@ def test_custom_tokenizer_class(dummy_vocab_path: str):
     assert cleaned_text.numpy()[0].decode("utf-8") == "hello , world !"
     assert token_lookup.numpy()[0][1].decode("utf-8") == "he"
     assert en_tokenizer.get_vocab_size() == 9
-    assert np.array_equal(en_tokenizer.get_reserved_tokens(), ["[PAD]", "[UNK]", "[START]", "[END]"])
+    assert np.array_equal(
+        en_tokenizer.get_reserved_tokens(), ["[PAD]", "[UNK]", "[START]", "[END]"]
+    )
+
 
 @pytest.mark.skip(reason="Not implemented yet")
 def test_custom_fast_bert_tokenizer(dummy_vocab_path: str):
-
-    fast_bert_tokenizer = BertTokenizer(dummy_vocab_path, lower_case=True, use_fast_bert=True)
+    fast_bert_tokenizer = BertTokenizer(
+        dummy_vocab_path, lower_case=True, use_fast_bert=True
+    )
 
     tokens = fast_bert_tokenizer.tokenize(["hello , world !"])
     cleaned_text = fast_bert_tokenizer.detokenize(tokens)
@@ -185,7 +189,6 @@ def test_custom_fast_bert_tokenizer(dummy_vocab_path: str):
 
 
 def test_character_tokenizer():
-
     char_tokenizer = CharacterTokenizer()
 
     tokens = char_tokenizer.tokenize(tf.constant(["hello , world ! 1+1=2"]))

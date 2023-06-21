@@ -84,7 +84,7 @@ def add_start_end(tokens: Union[tf.RaggedTensor, tf.Tensor]) -> tf.RaggedTensor:
         end = tf.fill([tokens.nrows(), 1], end_id)
         return tf.concat([start, tokens, end], axis=1)
     elif isinstance(tokens, tf.Tensor):
-        assert tokens.shape.rank == 1 # Only works for 1D tensors
+        assert tokens.shape.rank == 1  # Only works for 1D tensors
         return tf.concat([[start_id], tokens, [end_id]], axis=0)
 
 
@@ -118,8 +118,14 @@ class BertTokenizer(tf.Module):
     A custom tokenizer that uses the tensorflow_text BertTokenizer.
     """
 
-    def __init__(self, vocab_path: str, lower_case: bool = True, use_fast_bert: bool = False, reserved_tokens: list = RESERVED_TOKEN):
-        self._reserved_tokens = reserved_tokens 
+    def __init__(
+        self,
+        vocab_path: str,
+        lower_case: bool = True,
+        use_fast_bert: bool = False,
+        reserved_tokens: list = RESERVED_TOKEN,
+    ):
+        self._reserved_tokens = reserved_tokens
         self._vocab_path = tf.saved_model.Asset(vocab_path)
 
         vocab = tf.io.read_file(vocab_path)
@@ -129,7 +135,6 @@ class BertTokenizer(tf.Module):
         self.use_fast_bert = use_fast_bert
 
         if use_fast_bert:
-
             raise NotImplementedError("FastBertTokenizer is not implemented yet")
             """
             vocab_np = tf.strings.split(vocab, "\n").numpy()
@@ -138,7 +143,6 @@ class BertTokenizer(tf.Module):
             """
         else:
             self.tokenizer = tf_text.BertTokenizer(vocab_path, lower_case=lower_case)
-
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
     def tokenize(self, strings: tf.Tensor) -> tf.RaggedTensor:
@@ -157,9 +161,7 @@ class BertTokenizer(tf.Module):
     # add two signatures to the function
     # one for tensor and one for ragged tensor
     @tf.function(
-        input_signature=[
-            tf.RaggedTensorSpec(shape=[None, None], dtype=tf.int64)
-            ]
+        input_signature=[tf.RaggedTensorSpec(shape=[None, None], dtype=tf.int64)]
     )
     def detokenize(self, tokenized: tf.RaggedTensor) -> tf.Tensor:
         """
@@ -170,16 +172,14 @@ class BertTokenizer(tf.Module):
         return cleanup_text(uncleaned_text)
 
     @tf.function(
-        input_signature=[
-            tf.RaggedTensorSpec(shape=[None, None], dtype=tf.int64)
-        ]
+        input_signature=[tf.RaggedTensorSpec(shape=[None, None], dtype=tf.int64)]
     )
     def lookup(self, token_ids: tf.RaggedTensor) -> tf.RaggedTensor:
         """
         Lookup the token ids in the vocab.
         """
 
-        return tf.gather(self.vocab, token_ids) 
+        return tf.gather(self.vocab, token_ids)
 
     @tf.function
     def get_vocab_size(self) -> tf.Tensor:
@@ -188,7 +188,7 @@ class BertTokenizer(tf.Module):
         """
 
         return tf.shape(self.vocab)[0]
-    
+
     @tf.function
     def get_reserved_tokens(self) -> tf.Tensor:
         """
@@ -198,44 +198,168 @@ class BertTokenizer(tf.Module):
         return self._reserved_tokens
 
 
-
-
 class CharacterTokenizer(tf.Module):
     def __init__(self):
         super(CharacterTokenizer, self).__init__()
 
-        self.char_to_id = tf.constant([
-            0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14,
-            15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-            28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
-            41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
-            54, 55, 56, 57, 58
-        ], dtype=tf.int32)
+        self.char_to_id = tf.constant(
+            [
+                0,
+                1,
+                2,
+                3,
+                4,
+                5,
+                6,
+                7,
+                8,
+                9,
+                10,
+                11,
+                12,
+                13,
+                14,
+                15,
+                16,
+                17,
+                18,
+                19,
+                20,
+                21,
+                22,
+                23,
+                24,
+                25,
+                26,
+                27,
+                28,
+                29,
+                30,
+                31,
+                32,
+                33,
+                34,
+                35,
+                36,
+                37,
+                38,
+                39,
+                40,
+                41,
+                42,
+                43,
+                44,
+                45,
+                46,
+                47,
+                48,
+                49,
+                50,
+                51,
+                52,
+                53,
+                54,
+                55,
+                56,
+                57,
+                58,
+            ],
+            dtype=tf.int32,
+        )
 
-        self.char_vocab = tf.constant([
-            ' ', '!', '#', '$', '%', '&', "'", '(', ')', '*', '+',
-            ',', '-', '.', '/', '0', '1', '2', '3', '4', '5', '6',
-            '7', '8', '9', ':', ';', '=', '?', '@', '[', '_', 'a',
-            'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l',
-            'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w',
-            'x', 'y', 'z', '~'
-        ])
+        self.char_vocab = tf.constant(
+            [
+                " ",
+                "!",
+                "#",
+                "$",
+                "%",
+                "&",
+                "'",
+                "(",
+                ")",
+                "*",
+                "+",
+                ",",
+                "-",
+                ".",
+                "/",
+                "0",
+                "1",
+                "2",
+                "3",
+                "4",
+                "5",
+                "6",
+                "7",
+                "8",
+                "9",
+                ":",
+                ";",
+                "=",
+                "?",
+                "@",
+                "[",
+                "_",
+                "a",
+                "b",
+                "c",
+                "d",
+                "e",
+                "f",
+                "g",
+                "h",
+                "i",
+                "j",
+                "k",
+                "l",
+                "m",
+                "n",
+                "o",
+                "p",
+                "q",
+                "r",
+                "s",
+                "t",
+                "u",
+                "v",
+                "w",
+                "x",
+                "y",
+                "z",
+                "~",
+            ]
+        )
 
         self.num_chars = tf.shape(self.char_vocab)[0]
 
         self.reserved_tokens = ["[PAD]", "[START]", "[END]"]
 
         self.char_vocab = tf.concat([self.char_vocab, self.reserved_tokens], axis=0)
-        self.char_to_id = tf.concat([self.char_to_id, tf.constant([i for i in range(len(self.char_vocab) - len(self.reserved_tokens), len(self.char_vocab))])], axis=0)
+        self.char_to_id = tf.concat(
+            [
+                self.char_to_id,
+                tf.constant(
+                    [
+                        i
+                        for i in range(
+                            len(self.char_vocab) - len(self.reserved_tokens),
+                            len(self.char_vocab),
+                        )
+                    ]
+                ),
+            ],
+            axis=0,
+        )
 
         self.table_tokenize = tf.lookup.StaticHashTable(
             tf.lookup.KeyValueTensorInitializer(self.char_vocab, self.char_to_id),
-            default_value=-1
+            default_value=-1,
         )
 
         self.table_detokenize = tf.lookup.StaticHashTable(
             tf.lookup.KeyValueTensorInitializer(self.char_to_id, self.char_vocab),
-            default_value=''
+            default_value="",
         )
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
@@ -246,30 +370,25 @@ class CharacterTokenizer(tf.Module):
 
         num_examples = tf.shape(string)[0]
 
-        chars = tf.strings.unicode_split(string, 'UTF-8')
+        chars = tf.strings.unicode_split(string, "UTF-8")
         tokens = self.table_tokenize.lookup(chars)
 
         # add start and end tokens
         start_id = self.table_tokenize.lookup(tf.convert_to_tensor("[START]"))
-        
-        end_id = self.table_tokenize.lookup(tf.convert_to_tensor("[END]"))
 
+        end_id = self.table_tokenize.lookup(tf.convert_to_tensor("[END]"))
 
         start_token = tf.fill([1], start_id)
         end_token = tf.fill([1], end_id)
 
         tokens = tf.concat([[start_token], tokens, [end_token]], axis=0)
 
-        # merge the dimensions: 
-        # i.e. [[start_token], [4, 5, 6], [end_token]] -> [[start_token, 4, 5, 6, end_token]] 
+        # merge the dimensions:
+        # i.e. [[start_token], [4, 5, 6], [end_token]] -> [[start_token, 4, 5, 6, end_token]]
 
         tokens = tf.reshape(tokens, [num_examples, -1])
 
-
         return tokens
-
-
-
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)])
     def detokenize(self, ids: tf.Tensor) -> tf.Tensor:
@@ -280,12 +399,11 @@ class CharacterTokenizer(tf.Module):
             ids: tf.Tensor of shape [batch_size, seq_len]
         """
 
-
         # remove [START], [END]
         ids = ids[:, 1:-1]
 
         char_list = self.table_detokenize.lookup(ids)
 
-        string = tf.strings.reduce_join(char_list, axis=-1) 
+        string = tf.strings.reduce_join(char_list, axis=-1)
 
         return string
