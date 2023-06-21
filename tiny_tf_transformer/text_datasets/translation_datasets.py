@@ -271,7 +271,7 @@ class CharacterTokenizer(tf.Module):
 
 
 
-    #@tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.int32)])
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)])
     def detokenize(self, ids: tf.Tensor) -> tf.Tensor:
         """
         Detokenize the IDs by converting them back to characters.
@@ -279,6 +279,7 @@ class CharacterTokenizer(tf.Module):
         Input:
             ids: tf.Tensor of shape [batch_size, seq_len]
         """
+
 
         # remove [START], [END]
         ids = ids[:, 1:-1]
