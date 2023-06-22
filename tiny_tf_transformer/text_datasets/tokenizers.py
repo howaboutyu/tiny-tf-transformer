@@ -94,6 +94,22 @@ class BertTokenizer(tf.Module):
 
         return self._reserved_tokens
 
+    @tf.function
+    def get_start_token_id(self, start_token="[START]") -> tf.Tensor:
+        """
+        Return the start token id.
+        """
+
+        return tf.where(self.vocab == start_token)[0][0]
+
+    @tf.function
+    def get_end_token_id(self, end_token="[END]") -> tf.Tensor:
+        """
+        Return the end token id.
+        """
+
+        return tf.where(self.vocab == end_token)[0][0]
+
 
 class CharacterTokenizer(tf.Module):
     def __init__(self):
