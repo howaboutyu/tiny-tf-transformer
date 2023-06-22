@@ -5,14 +5,17 @@ import numpy as np
 
 import context
 
-from tiny_tf_transformer.text_datasets.translation_datasets import (
-    write_vocab_to_file,
-    get_wmt19_zh_en_ds,
-    write_vocab_zh_en,
-    add_start_end,
-    cleanup_text,
+from tiny_tf_transformer.text_datasets.tokenizers import (
     BertTokenizer,
     CharacterTokenizer,
+    CharacterTokenizerModel,
+)
+
+from tiny_tf_transformer.text_datasets.text_data_utils import (
+    add_start_end,
+    cleanup_text,
+    write_vocab_to_file,
+    get_wmt19_zh_en_ds,
 )
 
 
@@ -134,7 +137,8 @@ def test_zh_en_wmt19():
 
     train_ds = tf.data.Dataset.zip((zh_ds, en_ds))
 
-    write_vocab_zh_en(train_ds, 100, 100, "/tmp/zh_vocab.txt", "/tmp/en_vocab.txt")
+    write_vocab_to_file(zh_ds, 100, "/tmp/zh_vocab.txt")
+    write_vocab_to_file(en_ds, 100, "/tmp/en_vocab.txt")
 
     zh_tokenizer = text.BertTokenizer("/tmp/zh_vocab.txt", lower_case=True)
     en_tokenizer = text.BertTokenizer("/tmp/en_vocab.txt", lower_case=True)
@@ -196,3 +200,44 @@ def test_character_tokenizer():
     characters = char_tokenizer.detokenize(tokens)
 
     assert characters.numpy()[0].decode("utf-8") == "hello , world ! 1+1=2"
+
+    char_model = CharacterTokenizerModel(char_tokenizer)
+
+    char_model(tf.constant(["hello , world ! 1+1=2"]))
+    char_model.save("/tmp/test_character_tokenizer")
+
+    #################
+    #  Test tflite  #
+    #################
+    converter = tf.lite.TFLiteConverter.from_saved_model(
+        "/tmp/test_character_tokenizer"
+    )
+    converter.allow_custom_ops = True
+    converter.target_spec.supported_ops = [
+        tf.lite.OpsSet.TFLITE_BUILTINS,
+        tf.lite.OpsSet.SELECT_TF_OPS,
+    ]
+
+    tflite_model = converter.convert()
+
+    # save tflite model
+    with open("/tmp/test_character_tokenizer.tflite", "wb") as f:
+        f.write(tflite_model)
+
+    # load tflite model
+    interpreter = tf.lite.Interpreter(model_path="/tmp/test_character_tokenizer.tflite")
+    interpreter.allocate_tensors()
+
+    input_details = interpreter.get_input_details()
+    output_details = interpreter.get_output_details()
+
+    interpreter.set_tensor(
+        input_details[0]["index"], np.array(["hello , world ! 1+1=2"])
+    )
+
+    interpreter.invoke()
+
+    tokens_tflite = interpreter.get_tensor(output_details[0]["index"])
+
+    # check tflite tokens are the same as the original tokens
+    assert np.array_equal(tokens.numpy(), tokens_tflite)
