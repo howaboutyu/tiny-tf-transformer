@@ -135,8 +135,6 @@ def test_zh_en_wmt19():
         ]
     )
 
-    train_ds = tf.data.Dataset.zip((zh_ds, en_ds))
-
     write_vocab_to_file(zh_ds, 100, "/tmp/zh_vocab.txt")
     write_vocab_to_file(en_ds, 100, "/tmp/en_vocab.txt")
 
