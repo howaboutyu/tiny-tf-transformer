@@ -3,114 +3,11 @@ import tensorflow as tf
 import tensorflow_text as tf_text
 from tensorflow_text.tools.wordpiece_vocab import bert_vocab_from_dataset as bert_vocab
 
-from typing import Tuple, Union
-import re
-
-RESERVED_TOKEN = ["[PAD]", "[UNK]", "[START]", "[END]"]
-
-
-def write_vocab_to_file(
-    text_ds: tf.data.Dataset, vocab_size: int, output_path: str, lower_case: bool = True
-):
-    """
-    Write the wordpiece vocabulary to a file using the text_ds dataset.
-    """
-
-    vocab = bert_vocab.bert_vocab_from_dataset(
-        text_ds,
-        vocab_size=vocab_size,
-        reserved_tokens=RESERVED_TOKEN,
-        bert_tokenizer_params=dict(lower_case=lower_case),
-    )
-
-    tf.io.write_file(output_path, "\n".join(vocab))
-
-
-def get_wmt19_zh_en_ds() -> Tuple[tf.data.Dataset, tf.data.Dataset]:
-    """
-    Returns the wmt19 zh-en translation dataset.
-    """
-
-    config = tfds.translate.wmt.WmtConfig(
-        version="1.0.1",
-        language_pair=("zh", "en"),
-        subsets={
-            tfds.Split.TRAIN: [
-                "newscommentary_v13",
-            ],
-            tfds.Split.VALIDATION: ["newstest2018"],
-        },
-    )
-
-    builder = tfds.builder("wmt_translate", config=config)
-    builder.download_and_prepare()
-
-    return builder.as_dataset(as_supervised=True)
-
-
-def write_vocab_zh_en(
-    example_pairs: tf.data.Dataset,
-    zh_vocab_size: int,
-    en_vocab_size: int,
-    zh_file: str = "zh_vocab.txt",
-    en_file: str = "en_vocab.txt",
-):
-    """
-    Write the wordpiece vocab for zh and en to files using only the training data.
-    """
-
-    train_zh = (
-        example_pairs.map(lambda zh, en: zh).batch(2048).prefetch(tf.data.AUTOTUNE)
-    )
-    train_en = (
-        example_pairs.map(lambda zh, en: en).batch(2048).prefetch(tf.data.AUTOTUNE)
-    )
-
-    write_vocab_to_file(train_zh, zh_vocab_size, zh_file)
-    write_vocab_to_file(train_en, en_vocab_size, en_file)
-
-
-def add_start_end(tokens: Union[tf.RaggedTensor, tf.Tensor]) -> tf.RaggedTensor:
-    """
-    Add start and end tokens to the ragged tensor.
-    If the input is a tensor, it is assumed to be a 1D tensor of strings.
-    """
-
-    start_id = tf.constant(RESERVED_TOKEN.index("[START]"), dtype=tf.int64)
-    end_id = tf.constant(RESERVED_TOKEN.index("[END]"), dtype=tf.int64)
-
-    if isinstance(tokens, tf.RaggedTensor):
-        start = tf.fill([tokens.nrows(), 1], start_id)
-        end = tf.fill([tokens.nrows(), 1], end_id)
-        return tf.concat([start, tokens, end], axis=1)
-    elif isinstance(tokens, tf.Tensor):
-        assert tokens.shape.rank == 1  # Only works for 1D tensors
-        return tf.concat([[start_id], tokens, [end_id]], axis=0)
-
-
-def cleanup_text(token_txt: tf.RaggedTensor) -> tf.Tensor:
-    """
-    Remove the start, end and pad tokens from the tokenized text, while keeping the unk tokens.
-
-    `token_txt` is a ragged tensor of strings, something like:
-        <tf.RaggedTensor [[b'[START]', b'hello', b',', b'world', b'!', b'[END]'],
-         [b'[START]', b'what', b"'", b's', b'up', b'!', b'[END]']]>o
-
-    Output is a tensor of strings, something like:
-        <tf.Tensor: shape=(2,), dtype=string, numpy=array([b'hello , world !', b"what ' s up !"], dtype=object)>
-    """
-
-    bad_tokens = [re.escape(t) for t in RESERVED_TOKEN if t != "[UNK]"]
-
-    # Get the bad tokens as a regex, something like: \[PAD\]|\[START\]|\[END\]
-    bad_token_re = "|".join(bad_tokens)
-
-    bad_cells = tf.strings.regex_full_match(token_txt, bad_token_re)
-    result = tf.ragged.boolean_mask(token_txt, ~bad_cells)
-
-    result = tf.strings.reduce_join(result, separator=" ", axis=-1)
-
-    return result
+from tiny_tf_transformer.text_datasets.text_data_utils import (
+    RESERVED_TOKEN,
+    cleanup_text,
+    add_start_end,
+)
 
 
 class BertTokenizer(tf.Module):
@@ -385,7 +282,6 @@ class CharacterTokenizer(tf.Module):
 
         # merge the dimensions:
         # i.e. [[start_token], [4, 5, 6], [end_token]] -> [[start_token, 4, 5, 6, end_token]]
-
         tokens = tf.reshape(tokens, [num_examples, -1])
 
         return tokens
@@ -407,3 +303,32 @@ class CharacterTokenizer(tf.Module):
         string = tf.strings.reduce_join(char_list, axis=-1)
 
         return string
+
+    # the call function
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
+    def __call__(self, string: tf.Tensor) -> tf.Tensor:
+        """
+        Tokenize the string by converting characters to integer IDs.
+        """
+
+        return self.tokenize(string)
+
+
+class CharacterTokenizerModel(tf.keras.Model):
+    """
+    A Keras model that tokenizes the inputs using the CharacterTokenizer.
+    This can be saved and converted to tflite
+    """
+
+    def __init__(self, tokenizer: CharacterTokenizer):
+        super(CharacterTokenizerModel, self).__init__()
+
+        self.tokenizer = tokenizer
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
+    def call(self, inputs: tf.Tensor) -> tf.Tensor:
+        """
+        Tokenize the inputs.
+        """
+
+        return self.tokenizer(inputs)
