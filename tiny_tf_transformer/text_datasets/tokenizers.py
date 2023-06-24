@@ -244,8 +244,6 @@ class CharacterTokenizer(tf.Module):
             ]
         )
 
-        self.num_chars = tf.shape(self.char_vocab)[0]
-
         self.reserved_tokens = ["[PAD]", "[START]", "[END]"]
 
         self.char_vocab = tf.concat([self.char_vocab, self.reserved_tokens], axis=0)
@@ -274,6 +272,14 @@ class CharacterTokenizer(tf.Module):
             tf.lookup.KeyValueTensorInitializer(self.char_to_id, self.char_vocab),
             default_value="",
         )
+
+    @property
+    def vocab_size(self) -> tf.Tensor:
+        """
+        Return the vocab size.
+        """
+
+        return tf.shape(self.char_vocab)[0]
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
     def tokenize(self, string: tf.Tensor) -> tf.Tensor:
