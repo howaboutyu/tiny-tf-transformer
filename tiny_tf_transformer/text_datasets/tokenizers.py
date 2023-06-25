@@ -9,6 +9,68 @@ from tiny_tf_transformer.text_datasets.text_data_utils import (
     add_start_end,
 )
 
+DEFAULT_CHAR_VOCAB = [
+    " ",
+    "!",
+    "#",
+    "$",
+    "%",
+    "&",
+    "'",
+    "(",
+    ")",
+    "*",
+    "+",
+    ",",
+    "-",
+    ".",
+    "/",
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6",
+    "7",
+    "8",
+    "9",
+    ":",
+    ";",
+    "=",
+    "?",
+    "@",
+    "[",
+    "_",
+    "a",
+    "b",
+    "c",
+    "d",
+    "e",
+    "f",
+    "g",
+    "h",
+    "i",
+    "j",
+    "k",
+    "l",
+    "m",
+    "n",
+    "o",
+    "p",
+    "q",
+    "r",
+    "s",
+    "t",
+    "u",
+    "v",
+    "w",
+    "x",
+    "y",
+    "z",
+    "~",
+]
+
 
 class BertTokenizer(tf.Module):
     """
@@ -112,156 +174,17 @@ class BertTokenizer(tf.Module):
 
 
 class CharacterTokenizer(tf.Module):
-    def __init__(self):
+    def __init__(self, char_vocab: list[str] = DEFAULT_CHAR_VOCAB):
         super(CharacterTokenizer, self).__init__()
 
-        self.char_to_id = tf.constant(
-            [
-                0,
-                1,
-                2,
-                3,
-                4,
-                5,
-                6,
-                7,
-                8,
-                9,
-                10,
-                11,
-                12,
-                13,
-                14,
-                15,
-                16,
-                17,
-                18,
-                19,
-                20,
-                21,
-                22,
-                23,
-                24,
-                25,
-                26,
-                27,
-                28,
-                29,
-                30,
-                31,
-                32,
-                33,
-                34,
-                35,
-                36,
-                37,
-                38,
-                39,
-                40,
-                41,
-                42,
-                43,
-                44,
-                45,
-                46,
-                47,
-                48,
-                49,
-                50,
-                51,
-                52,
-                53,
-                54,
-                55,
-                56,
-                57,
-                58,
-            ],
-            dtype=tf.int32,
-        )
-
-        self.char_vocab = tf.constant(
-            [
-                " ",
-                "!",
-                "#",
-                "$",
-                "%",
-                "&",
-                "'",
-                "(",
-                ")",
-                "*",
-                "+",
-                ",",
-                "-",
-                ".",
-                "/",
-                "0",
-                "1",
-                "2",
-                "3",
-                "4",
-                "5",
-                "6",
-                "7",
-                "8",
-                "9",
-                ":",
-                ";",
-                "=",
-                "?",
-                "@",
-                "[",
-                "_",
-                "a",
-                "b",
-                "c",
-                "d",
-                "e",
-                "f",
-                "g",
-                "h",
-                "i",
-                "j",
-                "k",
-                "l",
-                "m",
-                "n",
-                "o",
-                "p",
-                "q",
-                "r",
-                "s",
-                "t",
-                "u",
-                "v",
-                "w",
-                "x",
-                "y",
-                "z",
-                "~",
-            ]
-        )
+        self.char_vocab = tf.constant(char_vocab)
 
         self.reserved_tokens = ["[PAD]", "[START]", "[END]"]
+        self.char_to_id = tf.range(
+            1, len(self.char_vocab) + 1 + len(self.reserved_tokens)
+        )
 
         self.char_vocab = tf.concat([self.char_vocab, self.reserved_tokens], axis=0)
-        self.char_to_id = tf.concat(
-            [
-                self.char_to_id,
-                tf.constant(
-                    [
-                        i
-                        for i in range(
-                            len(self.char_vocab) - len(self.reserved_tokens),
-                            len(self.char_vocab),
-                        )
-                    ]
-                ),
-            ],
-            axis=0,
-        )
 
         self.table_tokenize = tf.lookup.StaticHashTable(
             tf.lookup.KeyValueTensorInitializer(self.char_vocab, self.char_to_id),
@@ -308,7 +231,7 @@ class CharacterTokenizer(tf.Module):
 
         return tokens
 
-    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)])
+    # @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)])
     def detokenize(self, ids: tf.Tensor) -> tf.Tensor:
         """
         Detokenize the IDs by converting them back to characters.
@@ -317,11 +240,11 @@ class CharacterTokenizer(tf.Module):
             ids: tf.Tensor of shape [batch_size, seq_len]
         """
 
-        # remove [START], [END]
         ids = ids[:, 1:-1]
-
         char_list = self.table_detokenize.lookup(ids)
+        # import pdb; pdb.set_trace()
 
+        # string = cleanup_text(char_list)
         string = tf.strings.reduce_join(char_list, axis=-1)
 
         return string
