@@ -135,3 +135,42 @@ def cleanup_text(
     result = tf.strings.reduce_join(result, separator=" ", axis=-1)
 
     return result
+
+
+def clean_char_array(uncleaned_char_array: list[list[bytes]]) -> list[str]:
+    """
+    Cleans the char array by removing the padding value and joining it
+    into a string
+
+    Example:
+        uncleaned_char_array = [
+            [b'[START]', b'a', b'b', b', '[END]', b'[PAD]'],
+            [b'[START]', b'c', b'd', b', '[END]', b'[PAD]'],
+        ]
+
+        ->
+        cleaned_char_array = [
+            'abb',
+            'cdb',
+        ]
+
+    """
+
+    # The cleaned string array
+    cleaned_string_array = []
+    for char_array in uncleaned_char_array:
+        cleaned_string = []
+        for char in char_array:
+            string = char.decode("utf-8")
+
+            if string in ["[START]", "[PAD]"]:
+                continue
+
+            if string == "[END]":
+                break
+            cleaned_string.append(string)
+
+        cleaned_string = "".join(cleaned_string)
+
+        cleaned_string_array.append(cleaned_string)
+    return cleaned_string_array
