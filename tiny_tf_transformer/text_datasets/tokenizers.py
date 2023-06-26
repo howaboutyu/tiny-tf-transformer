@@ -201,8 +201,15 @@ class CharacterTokenizer(tf.Module):
         """
         Return the vocab size.
         """
-
         return tf.shape(self.char_vocab)[0]
+
+    @tf.function(input_signature=[tf.TensorSpec(shape=[None, None], dtype=tf.int32)])
+    def look_up(self, token_ids: tf.Tensor) -> tf.Tensor:
+        """
+        Lookup the token ids in the vocab.
+        """
+
+        return self.table_detokenize.lookup(token_ids)
 
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
     def tokenize(self, string: tf.Tensor) -> tf.Tensor:
@@ -216,9 +223,8 @@ class CharacterTokenizer(tf.Module):
         tokens = self.table_tokenize.lookup(chars)
 
         # add start and end tokens
-        start_id = self.table_tokenize.lookup(tf.convert_to_tensor("[START]"))
-
-        end_id = self.table_tokenize.lookup(tf.convert_to_tensor("[END]"))
+        start_id = self.get_start_token_id()
+        end_id = self.get_end_token_id()
 
         start_token = tf.fill([1], start_id)
         end_token = tf.fill([1], end_id)
@@ -248,6 +254,20 @@ class CharacterTokenizer(tf.Module):
         string = tf.strings.reduce_join(char_list, axis=-1)
 
         return string
+
+    def get_start_token_id(self, start_token="[START]") -> tf.Tensor:
+        """
+        Return the start token id.
+        """
+        start_token_id = self.table_tokenize.lookup(tf.convert_to_tensor(start_token))
+        return start_token_id
+
+    def get_end_token_id(self, end_token="[END]") -> tf.Tensor:
+        """
+        Return the end token id.
+        """
+        end_token_id = self.table_tokenize.lookup(tf.convert_to_tensor(end_token))
+        return end_token_id
 
     # the call function
     @tf.function(input_signature=[tf.TensorSpec(shape=[None], dtype=tf.string)])
