@@ -193,6 +193,21 @@ def test_custom_fast_bert_tokenizer(dummy_vocab_path: str):
 def test_character_tokenizer():
     char_tokenizer = CharacterTokenizer()
 
+    """
+    Test tokenize lookup 
+    """
+    test_text = " !#$%"  # This should give tokens 1, 2, 3, 4, 5
+
+    # import pdb; pdb.set_trace()
+    test_tokens = char_tokenizer.tokenize(tf.constant([test_text]))
+
+    assert test_tokens.numpy()[0][0] == char_tokenizer.get_start_token_id()
+    assert test_tokens.numpy()[0][1] == 1
+    assert test_tokens.numpy()[0][2] == 2
+
+    """
+    Test tokenize and detokenize 
+    """
     tokens = char_tokenizer.tokenize(tf.constant(["hello , world ! 1+1=2"]))
 
     characters = char_tokenizer.detokenize(tokens)
