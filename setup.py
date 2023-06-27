@@ -20,8 +20,8 @@ setup(
     ],
     install_requires=[
         # Add any dependencies required by SynapseFlow here
-        "tensorflow",
-        "tensorflow_datasets",
+        "tensorflow>=2.3.0",
+        "tensorflow_datasets>=4.0.0",
         "tensorflow_text",
         "numpy",
         "tqdm",
