@@ -3,6 +3,8 @@ import tensorflow as tf
 import tensorflow_text as tf_text
 from tensorflow_text.tools.wordpiece_vocab import bert_vocab_from_dataset as bert_vocab
 
+from typing import List
+
 from tiny_tf_transformer.text_datasets.text_data_utils import (
     RESERVED_TOKEN,
     cleanup_text,
@@ -174,7 +176,7 @@ class BertTokenizer(tf.Module):
 
 
 class CharacterTokenizer(tf.Module):
-    def __init__(self, char_vocab: list[str] = DEFAULT_CHAR_VOCAB):
+    def __init__(self, char_vocab: List[str] = DEFAULT_CHAR_VOCAB):
         super(CharacterTokenizer, self).__init__()
 
         self.char_vocab = tf.constant(char_vocab)

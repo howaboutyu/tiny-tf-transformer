@@ -1,7 +1,7 @@
 import tensorflow as tf
 import tensorflow_text as text
 import tensorflow_datasets as tfds
-from typing import Tuple, Union, Mapping
+from typing import Tuple, Union, Mapping, List
 import re
 
 
@@ -137,7 +137,7 @@ def cleanup_text(
     return result
 
 
-def clean_char_array(uncleaned_char_array: list[list[bytes]]) -> list[str]:
+def clean_char_array(uncleaned_char_array: List[List[bytes]]) -> List[str]:
     """
     Cleans the char array by removing the padding value and joining it
     into a string
