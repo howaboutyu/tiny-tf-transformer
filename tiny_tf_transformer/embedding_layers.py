@@ -43,7 +43,7 @@ class PositionalTokenEmbedding(tf.keras.layers.Layer):
         # Multiply by sqrt(d_model) as outlined in section 3.4 of the original transformer paper
         x = self.token_embedding(x)
         x = x * tf.math.sqrt(
-            tf.cast(self.d_model, self.dtype)
+            tf.cast(self.d_model, self.output_dtype)
         )  # x.shape = (batch_size, length, d_model)
 
         # Add the positional encoding
@@ -52,7 +52,7 @@ class PositionalTokenEmbedding(tf.keras.layers.Layer):
         return x
 
     @staticmethod
-    def positional_encoding(length, depth, dtype=tf.float32):
+    def positional_encoding(length, depth, output_dtype=tf.float32):
         """
         This is the positional encoding function implementation for the original transformer paper.
 
@@ -75,4 +75,4 @@ class PositionalTokenEmbedding(tf.keras.layers.Layer):
 
         pos_encoding = angles[np.newaxis, ...]
 
-        return tf.cast(pos_encoding, dtype)
+        return tf.cast(pos_encoding, output_dtype)
