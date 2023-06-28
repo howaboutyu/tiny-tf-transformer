@@ -21,11 +21,21 @@ def test_positional_token_embedding():
 
     x = tf.random.uniform((1, 100), minval=0, maxval=vocal_size, dtype=tf.int32)
 
-    pos_token_embedding = PositionalTokenEmbedding(vocal_size, d_model, max_length)
-
+    pos_token_embedding = PositionalTokenEmbedding(
+        vocal_size, d_model, max_length, tf.float32
+    )
     y = pos_token_embedding(x)
 
     assert y.shape == (1, 100, 128)
+    assert y.dtype == tf.float32
+
+    pos_token_embedding = PositionalTokenEmbedding(
+        vocal_size, d_model, max_length, tf.float16
+    )
+    y = pos_token_embedding(x)
+
+    assert y.shape == (1, 100, 128)
+    assert y.dtype == tf.float16
 
 
 def test_attention_layers():
