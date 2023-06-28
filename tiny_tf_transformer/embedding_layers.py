@@ -42,6 +42,8 @@ class PositionalTokenEmbedding(tf.keras.layers.Layer):
         length = tf.shape(x)[1]
         # Multiply by sqrt(d_model) as outlined in section 3.4 of the original transformer paper
         x = self.token_embedding(x)
+
+        x = tf.cast(x, self.output_dtype)
         x = x * tf.math.sqrt(
             tf.cast(self.d_model, self.output_dtype)
         )  # x.shape = (batch_size, length, d_model)
