@@ -9,7 +9,13 @@ class PositionalTokenEmbedding(tf.keras.layers.Layer):
     Given a token look up its token embedding and also adds a positional embedding.
     """
 
-    def __init__(self, vocab_size: int, d_model: int, max_length: int):
+    def __init__(
+        self,
+        vocab_size: int,
+        d_model: int,
+        max_length: int,
+        output_dtype: tf.DType = tf.float32,
+    ):
         super(PositionalTokenEmbedding, self).__init__()
 
         self.vocab_size = vocab_size
@@ -24,7 +30,9 @@ class PositionalTokenEmbedding(tf.keras.layers.Layer):
         )
 
         # positional encoding vector
-        self.pos_encoding = self.positional_encoding(max_length, d_model)
+        self.pos_encoding = self.positional_encoding(max_length, d_model, output_dtype)
+
+        self.output_dtype = output_dtype
 
     def compute_mask(self, *args, **kwargs):
         # Override this method to set the correct mask for the token embedding layer
@@ -32,11 +40,10 @@ class PositionalTokenEmbedding(tf.keras.layers.Layer):
 
     def call(self, x):
         length = tf.shape(x)[1]
-
         # Multiply by sqrt(d_model) as outlined in section 3.4 of the original transformer paper
         x = self.token_embedding(x)
         x = x * tf.math.sqrt(
-            tf.cast(self.d_model, tf.float32)
+            tf.cast(self.d_model, self.dtype)
         )  # x.shape = (batch_size, length, d_model)
 
         # Add the positional encoding
@@ -45,7 +52,7 @@ class PositionalTokenEmbedding(tf.keras.layers.Layer):
         return x
 
     @staticmethod
-    def positional_encoding(length, depth):
+    def positional_encoding(length, depth, dtype=tf.float32):
         """
         This is the positional encoding function implementation for the original transformer paper.
 
@@ -68,4 +75,4 @@ class PositionalTokenEmbedding(tf.keras.layers.Layer):
 
         pos_encoding = angles[np.newaxis, ...]
 
-        return tf.cast(pos_encoding, dtype=tf.float32)
+        return tf.cast(pos_encoding, dtype)
