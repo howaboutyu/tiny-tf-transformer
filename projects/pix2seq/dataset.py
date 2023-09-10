@@ -3,7 +3,7 @@ import tensorflow_datasets as tfds
 import numpy as np
 from utils import visualize_detections
 
-PAD_VALUE = -1 
+PAD_VALUE = 0 
 
 # TODO: DELETE 
 #int2str = dataset_info.features["objects"]["label"].int2str
@@ -93,18 +93,19 @@ def preprocess_fn( data, max_side=512, num_bins=256):
 
 def coord_to_bins(coord, image_dim, num_bins):
     bin = tf.cast(  coord / (image_dim / (num_bins - 1) ), tf.int32 )
+
+    bin = bin + 1
     return bin
 
 def bins_to_coord(bin, image_dim, num_bins):
     if isinstance(bin, tf.Tensor):
         bin = bin.numpy()
+
+    bin = bin - 1
     coord = (bin-1) * (image_dim / num_bins)
     return coord
 
 def format_fn(image, bboxes, label, image_shape, EOS_TOKEN, max_objects=40):
-
-    # normalize image 
-    image = image / 255.0
 
     num_objects = tf.shape( bboxes )[0]
     sequence_ids = tf.range( num_objects )
