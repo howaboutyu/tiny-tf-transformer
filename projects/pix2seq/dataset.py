@@ -142,6 +142,7 @@ def format_fn(image, bboxes, label, image_shape, EOS_TOKEN, max_objects=40):
     target = tf.concat([random_bboxes, random_labels], axis=1)
 
     # flatten target
+    target = target + 1
     target = tf.reshape(target, (-1,))
     target = tf.concat([target, [EOS_TOKEN]], axis=0)
 
@@ -158,5 +159,4 @@ def format_fn(image, bboxes, label, image_shape, EOS_TOKEN, max_objects=40):
         decoder_input = tf.pad(decoder_input, [[0, pad]], constant_values=PAD_VALUE)
         decoder_output = tf.pad(decoder_output, [[0, pad]], constant_values=PAD_VALUE)
     
-    tf.print(tf.reduce_sum(decoder_output))
     return (image, decoder_input), decoder_output
