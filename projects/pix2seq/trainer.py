@@ -9,6 +9,8 @@ from tiny_tf_transformer.losses_and_metrics import (
     masked_sparse_categorical_accuracy,
 )
 
+from model import get_pix2seq_model
+
 (train_ds, val_ds), dataset_info = tfds.load(
     "coco/2017", split=["train", "validation"], with_info=True, data_dir="~/data"
 )
@@ -33,65 +35,19 @@ train_ds = train_ds.map(
 
 train_ds = train_ds.batch(batch_size)
 
+for t in train_ds.take(1):
+    (image, decoder_input), decoder_output = t
+    import pdb; pdb.set_trace()
+    print(image.shape)
+    print(decoder_input.shape)
+    print(decoder_output.shape)
 
-def get_model(
-    input_shape,
-    model_name="resnet50v2",
-    num_layers: int = 4,
-    d_model: int = 128,
-    num_heads: int = 8,
-    d_ff: int = 512,
-    target_vocab_size: int = 256,
-    attention_dropout_rate: float = 0.1,
-    ff_dropout_rate: float = 0.1,
-    max_length: int = 2048,
-):
-    if model_name == "resnet50v2":
-        feature_extractor = tf.keras.applications.ResNet50V2(
-            include_top=False, weights="imagenet"
-        )
-        preprocess_fn = tf.keras.applications.resnet_v2.preprocess_input
 
-    # get decoder model
-    decoder = Decoder(
-        num_layers=num_layers,
-        d_model=d_model,
-        vocab_size=target_vocab_size,
-        num_heads=num_heads,
-        d_ff=d_ff,
-        attention_dropout_rate=attention_dropout_rate,
-        ff_dropout_rate=ff_dropout_rate,
-        max_length=max_length,
-    )
-
-    input = tf.keras.layers.Input(shape=input_shape)
-    decoder_input = tf.keras.layers.Input(shape=(max_length,))
-
-    x = preprocess_fn(input)
-
-    # extract features
-    x = feature_extractor(x)
-
-    # reshape context from [n, n, d] to [n * n, d]
-    x = tf.keras.layers.Reshape((-1, x.shape[-1]))(x)
-
-    # reduce dimensionality
-    x = tf.keras.layers.Dense(d_model, activation="relu")(x)
-
-    # use a causal decoder 
-    x = decoder(decoder_input, x)
-
-    x = tf.keras.layers.Dense(target_vocab_size, name="final_layer")(x)
-
-    model = tf.keras.Model(inputs=[input, decoder_input], outputs=x)
-
-    print(model.summary())
-    return model
 
 
 input_shape = (max_side, max_side, 3)
 
-model = get_model(
+model = get_pix2seq_model(
     input_shape,
     model_name="resnet50v2",
     num_layers=4,
@@ -116,12 +72,9 @@ model.compile(
 )
 
 model.fit(
-    train_ds.take(1000),
-    epochs=10,
+    train_ds.take(10),
+    epochs=100,
     validation_data=train_ds.take(1),
 )
 
 
-for t in train_ds.take(10):
-    (image, decoder_input), decoder_output = t
-    print(np.min(decoder_output))

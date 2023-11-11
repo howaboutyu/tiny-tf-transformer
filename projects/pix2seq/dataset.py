@@ -73,23 +73,41 @@ def preprocess_fn(data, max_side=512, num_bins=256):
 
     bboxes = tf.cast(bboxes, tf.float32)
 
-    x_min = bboxes[:, 1] * image_width
-    y_min = bboxes[:, 0] * image_height
-    x_max = bboxes[:, 3] * image_width
-    y_max = bboxes[:, 2] * image_height
+    # normalize bboxes
+    x_min = bboxes[:, 1]
+    y_min = bboxes[:, 0]
+    x_max = bboxes[:, 3]
+    y_max = bboxes[:, 2]
 
     bboxes = tf.stack([x_min, y_min, x_max, y_max], axis=1)
-    bboxes = tf.cast(bboxes, tf.int32)
 
     image, bboxes = resize_image(image, bboxes, max_side=max_side)
 
     # pad image
     image = tf.image.pad_to_bounding_box(image, 0, 0, max_side, max_side)
 
-    bboxes = coord_to_bins(bboxes, max_side, num_bins=num_bins)
+    # quantize bboxes
+    bboxes = quantize(bboxes, bins=num_bins)
     bboxes = tf.cast(bboxes, tf.int32)
 
     return image, bboxes, label, image_shape
+
+def quantize(x, bins=1000):
+    # x is a real number between [0, 1]
+    # returns an integer between [0, bins-1]
+    if isinstance(x, tf.Tensor):
+        return tf.cast(x * (bins - 1), tf.int32)
+    else:
+        return int(x * (bins - 1))
+
+
+def dequantize(x, bins=1000):
+    # x is an integer between [0, bins-1]
+    # returns a real number between [0, 1]
+    if isinstance(x, tf.Tensor):
+        return tf.cast(x, tf.float32) / (bins - 1)
+    else:
+        return float(x) / (bins - 1)
 
 
 def coord_to_bins(coord, image_dim, num_bins):
