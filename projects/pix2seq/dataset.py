@@ -88,7 +88,6 @@ def preprocess_fn(data, max_side=512, num_bins=256):
 
     # quantize bboxes
     bboxes = quantize(bboxes, bins=num_bins)
-    bboxes = tf.cast(bboxes, tf.int32)
 
     return image, bboxes, label, image_shape
 
@@ -158,5 +157,6 @@ def format_fn(image, bboxes, label, image_shape, EOS_TOKEN, max_objects=40):
         pad = max_objects * 5 - tf.shape(decoder_output)[0]
         decoder_input = tf.pad(decoder_input, [[0, pad]], constant_values=PAD_VALUE)
         decoder_output = tf.pad(decoder_output, [[0, pad]], constant_values=PAD_VALUE)
-
+    
+    tf.print(tf.reduce_sum(decoder_output))
     return (image, decoder_input), decoder_output

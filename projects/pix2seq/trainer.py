@@ -17,7 +17,7 @@ from model import get_pix2seq_model
 
 max_side = 128
 num_bins = 128
-batch_size = 2
+batch_size = 32 
 max_objects = 10
 
 EOS_TOKEN = num_bins + 1
@@ -27,6 +27,8 @@ train_ds = train_ds.map(
     num_parallel_calls=tf.data.experimental.AUTOTUNE,
 )
 
+train_ds = train_ds.shuffle(1024)
+
 train_ds = train_ds.map(
     lambda image, bboxes, label, image_shape: format_fn(
         image, bboxes, label, image_shape, EOS_TOKEN, max_objects=max_objects
@@ -34,15 +36,6 @@ train_ds = train_ds.map(
 )
 
 train_ds = train_ds.batch(batch_size)
-
-for t in train_ds.take(1):
-    (image, decoder_input), decoder_output = t
-    import pdb; pdb.set_trace()
-    print(image.shape)
-    print(decoder_input.shape)
-    print(decoder_output.shape)
-
-
 
 
 input_shape = (max_side, max_side, 3)
@@ -72,7 +65,7 @@ model.compile(
 )
 
 model.fit(
-    train_ds.take(10),
+    train_ds,
     epochs=100,
     validation_data=train_ds.take(1),
 )
