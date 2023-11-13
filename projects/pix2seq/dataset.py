@@ -3,7 +3,7 @@ import tensorflow_datasets as tfds
 import numpy as np
 from utils import visualize_detections
 
-PAD_VALUE = 0
+PAD_VALUE =  0 
 
 # TODO: DELETE
 # int2str = dataset_info.features["objects"]["label"].int2str
@@ -81,10 +81,12 @@ def preprocess_fn(data, max_side=512, num_bins=256):
 
     bboxes = tf.stack([x_min, y_min, x_max, y_max], axis=1)
 
-    image, bboxes = resize_image(image, bboxes, max_side=max_side)
+    image = tf.image.resize(image, (max_side, max_side)) 
+
+    #image, bboxes = resize_image(image, bboxes, max_side=max_side)
 
     # pad image
-    image = tf.image.pad_to_bounding_box(image, 0, 0, max_side, max_side)
+    #image = tf.image.pad_to_bounding_box(image, 0, 0, max_side, max_side)
 
     # quantize bboxes
     bboxes = quantize(bboxes, bins=num_bins)
@@ -108,23 +110,6 @@ def dequantize(x, bins=1000):
     else:
         return float(x) / (bins - 1)
 
-
-def coord_to_bins(coord, image_dim, num_bins):
-    bin = tf.cast(coord / (image_dim / (num_bins - 1)), tf.int32)
-
-    bin = bin + 1
-    return bin
-
-
-def bins_to_coord(bin, image_dim, num_bins):
-    if isinstance(bin, tf.Tensor):
-        bin = bin.numpy()
-
-    bin = bin - 1
-    coord = (bin - 1) * (image_dim / num_bins)
-    return coord
-
-
 def format_fn(image, bboxes, label, image_shape, EOS_TOKEN, max_objects=40):
     num_objects = tf.shape(bboxes)[0]
     sequence_ids = tf.range(num_objects)
@@ -140,9 +125,9 @@ def format_fn(image, bboxes, label, image_shape, EOS_TOKEN, max_objects=40):
 
     random_labels = tf.cast(random_labels, tf.int32)
     target = tf.concat([random_bboxes, random_labels], axis=1)
+    target += 1
 
     # flatten target
-    target = target + 1
     target = tf.reshape(target, (-1,))
     target = tf.concat([target, [EOS_TOKEN]], axis=0)
 
