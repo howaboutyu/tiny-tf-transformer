@@ -71,7 +71,7 @@ def train(train_ds, val_ds, train_config):
     )
 
     model.fit(
-        train_ds.take(1),
+        train_ds,
         epochs=100,
         validation_data=val_ds.take(1),
     )
