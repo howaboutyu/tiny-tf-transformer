@@ -53,8 +53,8 @@ def get_dataset(data_config):
     )
 
     # Batch the datasets
-    train_ds = train_ds.batch(data_config.batch_size)
-    val_ds = val_ds.batch(data_config.batch_size)
+    train_ds = train_ds.batch(data_config.batch_size).prefetch(tf.data.experimental.AUTOTUNE)
+    val_ds = val_ds.batch(data_config.batch_size).prefetch(tf.data.experimental.AUTOTUNE)
 
     return train_ds, val_ds, sos_token, eos_token
 
