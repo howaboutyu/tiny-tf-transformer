@@ -59,7 +59,7 @@ def get_dataset(data_config):
     return train_ds, val_ds, sos_token, eos_token
 
 
-def train(train_ds, val_ds, max_side=512, num_bins=256, max_objects=20):
+def train(train_ds, val_ds, train_config):
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=1e-4,
     )
