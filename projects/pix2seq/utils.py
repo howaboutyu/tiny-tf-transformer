@@ -14,6 +14,10 @@ def visualize_detections(
     plt.imshow(image)
     ax = plt.gca()
     for box, _cls, score in zip(boxes, classes, scores):
+        box = np.squeeze(box)
+        _cls = np.squeeze(_cls)
+        score = np.squeeze(score)
+
         text = "{}: {:.2f}".format(_cls, score)
         x1, y1, x2, y2 = box
         w, h = x2 - x1, y2 - y1

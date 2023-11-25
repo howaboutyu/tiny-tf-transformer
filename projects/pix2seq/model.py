@@ -1,7 +1,5 @@
-
 import tensorflow as tf
 from tiny_tf_transformer.transformer import Decoder
-
 
 
 def get_pix2seq_model(
@@ -48,7 +46,7 @@ def get_pix2seq_model(
     # reduce dimensionality
     x = tf.keras.layers.Dense(d_ff)(x)
 
-    # use a causal decoder 
+    # use a causal decoder
     x = decoder(decoder_input, x)
 
     x = tf.keras.layers.Dense(target_vocab_size, name="final_layer")(x)

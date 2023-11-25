@@ -114,6 +114,7 @@ if __name__ == "__main__":
         for i in range(config.data_config.batch_size):
             bboxes_np = np.asarray(bboxes[i]) * config.data_config.max_side
             labels_np = np.asarray(labels[i])
+
             scores = np.ones_like(labels_np).astype(np.float32)
 
             visualize_detections(images[i], bboxes_np, labels_np, scores)
