@@ -17,10 +17,10 @@ from utils import visualize_detections
 def get_dataset(data_config):
     # Load the dataset using TensorFlow Datasets
     (train_ds, val_ds), dataset_info = tfds.load(
-        "coco/2017", 
-        split=["train", "validation"], 
-        with_info=True, 
-        data_dir=data_config.data_dir  # Use data directory from the config
+        "coco/2017",
+        split=["train", "validation"],
+        with_info=True,
+        data_dir=data_config.data_dir,  # Use data directory from the config
     )
 
     # Define special tokens based on num_bins from the config
@@ -34,28 +34,22 @@ def get_dataset(data_config):
     # Function to apply preprocessing and formatting
     def preprocess_and_format(x):
         # Preprocess the data
-        preprocessed = preprocess_fn(
-            x, 
-            max_side=max_side,
-            num_bins=num_bins
-        )
+        preprocessed = preprocess_fn(x, max_side=max_side, num_bins=num_bins)
         # Format the data
         return format_fn(
-            *preprocessed, 
-            sos_token=sos_token, 
-            eos_token=eos_token, 
+            *preprocessed,
+            sos_token=sos_token,
+            eos_token=eos_token,
             max_objects=max_objects
         )
 
     # Apply the preprocessing and formatting functions to the datasets
     train_ds = train_ds.map(
-        preprocess_and_format,
-        num_parallel_calls=tf.data.experimental.AUTOTUNE
+        preprocess_and_format, num_parallel_calls=tf.data.experimental.AUTOTUNE
     )
 
     val_ds = val_ds.map(
-        preprocess_and_format,
-        num_parallel_calls=tf.data.experimental.AUTOTUNE
+        preprocess_and_format, num_parallel_calls=tf.data.experimental.AUTOTUNE
     )
 
     # Batch the datasets
@@ -64,22 +58,8 @@ def get_dataset(data_config):
 
     return train_ds, val_ds, sos_token, eos_token
 
+
 def train(train_ds, val_ds, max_side=512, num_bins=256, max_objects=20):
-    input_shape = (max_side, max_side, 3)
-
-    model = get_pix2seq_model(
-        input_shape,
-        model_name="resnet50v2",
-        num_layers=4,
-        d_model=128,
-        num_heads=8,
-        d_ff=512,
-        target_vocab_size=num_bins + 4,
-        attention_dropout_rate=0.1,
-        ff_dropout_rate=0.1,
-        max_length=max_objects * 5,
-    )
-
     optimizer = tf.keras.optimizers.Adam(
         learning_rate=1e-4,
     )
@@ -97,13 +77,41 @@ def train(train_ds, val_ds, max_side=512, num_bins=256, max_objects=20):
     )
 
 
+def get_model(config):
+    # Retrieve model and data parameters from the configuration
+    max_side = config.data_config.max_side
+    num_bins = config.data_config.num_bins
+    max_objects = config.data_config.max_objects
+
+    # Model configuration
+    model_config = config.model
+
+    # Define the input shape
+    input_shape = (max_side, max_side, 3)
+
+    # Create the model using parameters from the configuration
+    model = get_pix2seq_model(
+        input_shape,
+        model_name=model_config.name,
+        num_layers=model_config.num_layers,
+        d_model=model_config.d_model,
+        num_heads=model_config.num_heads,
+        d_ff=model_config.d_ff,
+        target_vocab_size=num_bins + 4,  # Adjusted for special tokens
+        attention_dropout_rate=model_config.attention_dropout_rate,
+        ff_dropout_rate=model_config.ff_dropout_rate,
+        max_length=max_objects * 5,  # Assuming 5 tokens per object
+    )
+
+    return model
+
+
 if __name__ == "__main__":
     config = OmegaConf.load("config.yaml")
 
-    train_ds, val_ds, sos_token, eos_token = get_dataset(
-        config.data_config
-        
-    )
+    train_ds, val_ds, sos_token, eos_token = get_dataset(config.data_config)
+
+    model = get_model(config)
 
     for (x, y_in), y_out in train_ds.take(1):
         bboxes, labels = sequence_decoder(
