@@ -1,7 +1,7 @@
 data_config:
-  batch_size: 32
-  max_side: 512
-  num_bins: 256
+  batch_size: 32 
+  max_side: 256 
+  num_bins: 256 
   max_objects: 20
   data_dir: "~/data"
 model:
@@ -10,9 +10,9 @@ model:
   d_model: 128
   num_heads: 8
   d_ff: 512
-  target_vocab_size: 260
+  #target_vocab_size: 260
   attention_dropout_rate: 0.1
   ff_dropout_rate: 0.1
 training:
   learning_rate: 1e-4
-  epochs: 100
+  epochs: 100 

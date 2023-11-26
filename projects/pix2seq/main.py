@@ -32,6 +32,7 @@ def get_dataset(data_config):
     max_objects = data_config.max_objects
 
     # Function to apply preprocessing and formatting
+    @tf.function
     def preprocess_and_format(x):
         # Preprocess the data
         preprocessed = preprocess_fn(x, max_side=max_side, num_bins=num_bins)
@@ -61,7 +62,7 @@ def get_dataset(data_config):
 
 def train(train_ds, val_ds, train_config):
     optimizer = tf.keras.optimizers.Adam(
-        learning_rate=1e-4,
+            learning_rate=train_config.learning_rate,
     )
 
     model.compile(
@@ -71,8 +72,8 @@ def train(train_ds, val_ds, train_config):
     )
 
     model.fit(
-        train_ds,
-        epochs=100,
+        train_ds.take(1000),
+        epochs=train_config.epochs,
         validation_data=val_ds.take(1),
     )
 
@@ -126,5 +127,8 @@ if __name__ == "__main__":
             scores = np.ones_like(labels_np).astype(np.float32)
 
             visualize_detections(images[i], bboxes_np, labels_np, scores)
+    #model = tf.keras.models.load_model("pix2seq.keras")
+    model.load_weights('pix2seq.keras')
+    train(train_ds, val_ds, config.training)
 
-    train(train_ds, val_ds)
+    model.save('pix2seq.keras')

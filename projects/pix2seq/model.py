@@ -44,7 +44,7 @@ def get_pix2seq_model(
     x = tf.keras.layers.Reshape((-1, x.shape[-1]))(x)
 
     # reduce dimensionality
-    x = tf.keras.layers.Dense(d_ff)(x)
+    #x = tf.keras.layers.Dense(d_ff, activation='relu')(x)
 
     # use a causal decoder
     x = decoder(decoder_input, x)
