@@ -2,6 +2,36 @@ import tensorflow as tf
 from tiny_tf_transformer.transformer import Decoder
 
 
+def _get_target_vocab_size(
+    num_bins,
+):
+    return num_bins + 4
+
+
+def get_model_and_preprocessing(model_name):
+    model_preprocessing_dict = {
+        "resnet50v2": {
+            "model": tf.keras.applications.ResNet50V2,
+            "preprocess": tf.keras.applications.resnet_v2.preprocess_input,
+        },
+        "mobilenetv2": {
+            "model": tf.keras.applications.MobileNetV2,
+            "preprocess": tf.keras.applications.mobilenet_v2.preprocess_input,
+        },
+    }
+
+    model_info = model_preprocessing_dict.get(model_name)
+
+    if model_info:
+        kwargs = {"include_top": False, "weights": "imagenet"}
+        return {
+            "model": model_info["model"](**kwargs),
+            "preprocess": model_info["preprocess"],
+        }
+    else:
+        return None
+
+
 def get_pix2seq_model(
     input_shape,
     model_name="resnet50v2",
@@ -14,11 +44,9 @@ def get_pix2seq_model(
     ff_dropout_rate: float = 0.1,
     max_length: int = 2048,
 ):
-    if model_name == "resnet50v2":
-        feature_extractor = tf.keras.applications.ResNet50V2(
-            include_top=False, weights="imagenet"
-        )
-        preprocess_fn = tf.keras.applications.resnet_v2.preprocess_input
+    feature_extraction_info = get_model_and_preprocessing(model_name)
+    preprocessor_fn = feature_extraction_info["preprocess"]
+    feature_extractor = feature_extraction_info["model"]
 
     # get decoder model
     decoder = Decoder(
@@ -35,16 +63,12 @@ def get_pix2seq_model(
     input = tf.keras.layers.Input(shape=input_shape)
     decoder_input = tf.keras.layers.Input(shape=(max_length,))
 
-    x = preprocess_fn(input)
+    x = preprocessor_fn(input)
 
-    # extract features
     x = feature_extractor(x)
 
-    # reshape context from [n, n, d] to [n * n, d]
+    # reshape feature grid from [n, n, d] to [n * n, d]
     x = tf.keras.layers.Reshape((-1, x.shape[-1]))(x)
-
-    # reduce dimensionality
-    #x = tf.keras.layers.Dense(d_ff, activation='relu')(x)
 
     # use a causal decoder
     x = decoder(decoder_input, x)
@@ -55,3 +79,21 @@ def get_pix2seq_model(
 
     print(model.summary())
     return model
+
+
+class WarmupThenDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule):
+    def __init__(self, initial_learning_rate, epochs, warmup_epochs, steps_per_epoch):
+        super(WarmupThenDecaySchedule, self).__init__()
+        self.initial_learning_rate = initial_learning_rate
+        self.epochs = epochs
+        self.warmup_epochs = warmup_epochs
+        self.steps_per_epoch = steps_per_epoch
+
+    def __call__(self, step):
+        warmup_lr = self.initial_learning_rate * (
+            step / (self.warmup_epochs * self.steps_per_epoch)
+        )
+        decay_lr = self.initial_learning_rate * (
+            1 - step / (self.epochs * self.steps_per_epoch)
+        )
+        return tf.minimum(warmup_lr, decay_lr)

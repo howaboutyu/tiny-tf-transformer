@@ -3,7 +3,15 @@ import numpy as np
 
 
 def visualize_detections(
-    image, boxes, classes, scores, figsize=(7, 7), linewidth=1, color=[0, 0, 1]
+    image,
+    boxes,
+    classes,
+    scores,
+    figsize=(7, 7),
+    linewidth=1,
+    color=[0, 0, 1],
+    save_path=None,
+    show=False,
 ):
     """
     Visualize Detection function taken from: https://keras.io/examples/vision/retinanet/
@@ -33,5 +41,10 @@ def visualize_detections(
             clip_box=ax.clipbox,
             clip_on=True,
         )
-    plt.show()
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches="tight")
+
+    if show:
+        plt.show()
     return ax

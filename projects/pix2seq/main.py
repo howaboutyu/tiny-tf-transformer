@@ -1,7 +1,11 @@
+import os
 import tensorflow_datasets as tfds
 import tensorflow as tf
 import numpy as np
 from omegaconf import OmegaConf
+import logging
+
+logging.basicConfig(level=logging.INFO)
 
 from tiny_tf_transformer.transformer import Decoder
 from tiny_tf_transformer.losses_and_metrics import (
@@ -9,7 +13,7 @@ from tiny_tf_transformer.losses_and_metrics import (
     masked_sparse_categorical_accuracy,
 )
 
-from model import get_pix2seq_model
+from model import get_pix2seq_model, WarmupThenDecaySchedule
 from dataset import preprocess_fn, format_fn, PAD_VALUE, sequence_decoder
 from utils import visualize_detections
 
@@ -41,7 +45,7 @@ def get_dataset(data_config):
             *preprocessed,
             sos_token=sos_token,
             eos_token=eos_token,
-            max_objects=max_objects
+            max_objects=max_objects,
         )
 
     # Apply the preprocessing and formatting functions to the datasets
@@ -54,16 +58,24 @@ def get_dataset(data_config):
     )
 
     # Batch the datasets
-    train_ds = train_ds.batch(data_config.batch_size).prefetch(tf.data.experimental.AUTOTUNE)
-    val_ds = val_ds.batch(data_config.batch_size).prefetch(tf.data.experimental.AUTOTUNE)
+    train_ds = train_ds.batch(data_config.batch_size).prefetch(
+        tf.data.experimental.AUTOTUNE
+    )
+    val_ds = val_ds.batch(data_config.batch_size).prefetch(
+        tf.data.experimental.AUTOTUNE
+    )
 
     return train_ds, val_ds, sos_token, eos_token
 
 
-def train(train_ds, val_ds, train_config):
-    optimizer = tf.keras.optimizers.Adam(
-            learning_rate=train_config.learning_rate,
+def train(model, train_ds, val_ds, train_config):
+    lr_schedule = WarmupThenDecaySchedule(
+        train_config.initial_learning_rate,
+        train_config.epochs,
+        train_config.warmup_epochs,
+        train_config.steps_per_epoch,
     )
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
     model.compile(
         loss=masked_sparse_categorical_cross_entropy,
@@ -72,7 +84,7 @@ def train(train_ds, val_ds, train_config):
     )
 
     model.fit(
-        train_ds.take(1000),
+        train_ds.take(train_config.steps_per_epoch),
         epochs=train_config.epochs,
         validation_data=val_ds.take(1),
     )
@@ -107,28 +119,53 @@ def get_model(config):
     return model
 
 
-if __name__ == "__main__":
-    config = OmegaConf.load("config.yaml")
-
-    train_ds, val_ds, sos_token, eos_token = get_dataset(config.data_config)
-
-    model = get_model(config)
-
-    for (x, y_in), y_out in train_ds.take(1):
+def eval(model, val_ds, config):
+    batch_id = 0
+    for (image_batch, y_tok_in), y_tok_out in val_ds.take(1):
+        y_tok_pred_probs = model([image_batch, y_tok_in])
+        y_tok_pred = np.argmax(y_tok_pred_probs, -1)
         bboxes, labels = sequence_decoder(
-            y_out, eos_token=eos_token, num_bins=config.data_config.num_bins
+            y_tok_pred, eos_token=config.eos_token, num_bins=config.data_config.num_bins
         )
-        images = x
 
         for i in range(config.data_config.batch_size):
             bboxes_np = np.asarray(bboxes[i]) * config.data_config.max_side
             labels_np = np.asarray(labels[i])
 
             scores = np.ones_like(labels_np).astype(np.float32)
+            os.makedirs("eval_images", exist_ok=True)
+            image_path = f"eval_images/batch_{batch_id}_{i}.png"
+            visualize_detections(
+                image_batch[i], bboxes_np, labels_np, scores, save_path=image_path
+            )
 
-            visualize_detections(images[i], bboxes_np, labels_np, scores)
-    #model = tf.keras.models.load_model("pix2seq.keras")
-    model.load_weights('pix2seq.keras')
-    train(train_ds, val_ds, config.training)
 
-    model.save('pix2seq.keras')
+def main():
+    config = OmegaConf.load("config.yaml")
+
+    train_ds, val_ds, sos_token, eos_token = get_dataset(config.data_config)
+    config.sos_token = sos_token
+    config.eos_token = eos_token
+
+    logging.info(f"Start token: {sos_token}")
+    logging.info(f"End token: {eos_token} ")
+
+    model = get_model(config)
+
+    if os.path.exists(config.checkpoint):
+        model = tf.keras.models.load_model(config.checkpoint)
+    else:
+        logging.warning(f"No checkpoints found at {config.checkpoint}")
+
+    train(model, train_ds, val_ds, config.training)
+    eval(model, train_ds, config)
+
+    assert (
+        config.checkpoint_output_dir
+    ), "Need to specify newly trained output model path."
+
+    tf.keras.saving.save_model(model, config.checkpoint_output_dir, save_format="tf")
+
+
+if __name__ == "__main__":
+    main()
