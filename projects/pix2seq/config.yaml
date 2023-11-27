@@ -1,5 +1,5 @@
 data_config:
-  batch_size: 32 
+  batch_size: 2 
   max_side: 256 
   num_bins: 256 
   max_objects: 20
@@ -14,5 +14,10 @@ model:
   attention_dropout_rate: 0.1
   ff_dropout_rate: 0.1
 training:
-  learning_rate: 1e-4
-  epochs: 100 
+  initial_learning_rate: 1e-3 
+  warmup_epochs: 10
+  epochs: 50 
+  steps_per_epoch: 5
+
+checkpoint: None
+checkpoint_output_dir: None
