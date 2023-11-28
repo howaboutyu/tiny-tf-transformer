@@ -10,14 +10,13 @@ model:
   d_model: 128
   num_heads: 8
   d_ff: 512
-  #target_vocab_size: 260
   attention_dropout_rate: 0.1
   ff_dropout_rate: 0.1
 training:
   initial_learning_rate: 1e-3 
   warmup_epochs: 10
-  epochs: 50 
-  steps_per_epoch: 5
+  epochs: 2000 
+  steps_per_epoch: 20 
 
-checkpoint: None
-checkpoint_output_dir: None
+checkpoint:  pix2seq.weighwts
+checkpoint_output_dir: pix2seq.weights

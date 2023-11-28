@@ -97,3 +97,11 @@ class WarmupThenDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule
             1 - step / (self.epochs * self.steps_per_epoch)
         )
         return tf.minimum(warmup_lr, decay_lr)
+
+    def get_config(self):
+        return {
+            'initial_learning_rate': self.initial_learning_rate,
+            'epochs': self.epochs,
+            'warmup_epochs': self.warmup_epochs,
+            'steps_per_epoch': self.steps_per_epoch
+        }

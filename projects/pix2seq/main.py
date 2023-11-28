@@ -69,19 +69,7 @@ def get_dataset(data_config):
 
 
 def train(model, train_ds, val_ds, train_config):
-    lr_schedule = WarmupThenDecaySchedule(
-        train_config.initial_learning_rate,
-        train_config.epochs,
-        train_config.warmup_epochs,
-        train_config.steps_per_epoch,
-    )
-    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
-
-    model.compile(
-        loss=masked_sparse_categorical_cross_entropy,
-        optimizer=optimizer,
-        metrics=[masked_sparse_categorical_accuracy],
-    )
+    
 
     model.fit(
         train_ds.take(train_config.steps_per_epoch),
@@ -114,6 +102,20 @@ def get_model(config):
         attention_dropout_rate=model_config.attention_dropout_rate,
         ff_dropout_rate=model_config.ff_dropout_rate,
         max_length=max_objects * 5,  # Assuming 5 tokens per object
+    )
+
+    lr_schedule = WarmupThenDecaySchedule(
+        config.training.initial_learning_rate,
+        config.training.epochs,
+        config.training.warmup_epochs,
+        config.training.steps_per_epoch,
+    )
+    optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
+
+    model.compile(
+        loss=masked_sparse_categorical_cross_entropy,
+        optimizer=optimizer,
+        metrics=[masked_sparse_categorical_accuracy],
     )
 
     return model
@@ -152,8 +154,10 @@ def main():
 
     model = get_model(config)
 
-    if os.path.exists(config.checkpoint):
-        model = tf.keras.models.load_model(config.checkpoint)
+    # load weights
+    if os.path.exists(config.checkpoint + '.index'):
+        model.load_weights(config.checkpoint)
+        logging.info(f"Loaded weights from {config.checkpoint}")
     else:
         logging.warning(f"No checkpoints found at {config.checkpoint}")
 
@@ -164,7 +168,8 @@ def main():
         config.checkpoint_output_dir
     ), "Need to specify newly trained output model path."
 
-    tf.keras.saving.save_model(model, config.checkpoint_output_dir, save_format="tf")
+    model.save_weights(config.checkpoint_output_dir)
+    logging.info(f'Saved model at :{config.checkpoint_output_dir}')
 
 
 if __name__ == "__main__":
