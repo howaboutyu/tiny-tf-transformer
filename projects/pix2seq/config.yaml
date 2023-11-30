@@ -18,5 +18,5 @@ training:
   epochs: 2000 
   steps_per_epoch: 20 
 
-checkpoint:  pix2seq.weighwts
-checkpoint_output_dir: pix2seq.weights
+checkpoint:  weights/pix2seq.weights
+checkpoint_output_dir: weights/pix2seq.weights
