@@ -1,15 +1,15 @@
 data_config:
-  batch_size: 2 
-  max_side: 256 
-  num_bins: 256 
-  max_objects: 20
+  batch_size: 32 
+  max_side: 224 
+  num_bins: 224 
+  max_objects: 30
   data_dir: "~/data"
 model:
   name: "resnet50v2"
-  num_layers: 4
-  d_model: 128
+  num_layers: 2 
+  d_model: 256 
   num_heads: 8
-  d_ff: 512
+  d_ff: 256 
   attention_dropout_rate: 0.1
   ff_dropout_rate: 0.1
 training:
