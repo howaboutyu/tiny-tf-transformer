@@ -15,8 +15,8 @@ model:
 training:
   initial_learning_rate: 1e-3 
   warmup_epochs: 10
-  epochs: 2000 
-  steps_per_epoch: 20 
+  epochs: 100 
+  steps_per_epoch: -1 
 
 checkpoint:  weights/pix2seq.weights
 checkpoint_output_dir: weights/pix2seq.weights
