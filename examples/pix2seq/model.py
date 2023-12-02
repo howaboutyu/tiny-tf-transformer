@@ -2,10 +2,13 @@ import tensorflow as tf
 from tiny_tf_transformer.transformer import Decoder
 
 
-def _get_target_vocab_size(
+def get_target_vocab_size(
     num_bins,
 ):
-    return num_bins + 4
+    # 3 special tokens: <pad>, <sos>, <eos>
+    # and 1 for shifting the values by 1
+    # 80 is the maximum number of classes in COCO dataset
+    return min(num_bins, 80) + 4
 
 
 def get_model_and_preprocessing(model_name):
@@ -100,8 +103,8 @@ class WarmupThenDecaySchedule(tf.keras.optimizers.schedules.LearningRateSchedule
 
     def get_config(self):
         return {
-            'initial_learning_rate': self.initial_learning_rate,
-            'epochs': self.epochs,
-            'warmup_epochs': self.warmup_epochs,
-            'steps_per_epoch': self.steps_per_epoch
+            "initial_learning_rate": self.initial_learning_rate,
+            "epochs": self.epochs,
+            "warmup_epochs": self.warmup_epochs,
+            "steps_per_epoch": self.steps_per_epoch,
         }
