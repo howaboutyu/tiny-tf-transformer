@@ -37,6 +37,9 @@ class PositionalEmbedding(tf.keras.layers.Layer):
         return self.masking_layer.compute_mask(*args, **kwargs)
 
     def call(self, x):
+        """
+        x.shape = (batch_size, length, feature_dim)
+        """
         length = tf.shape(x)[1]
 
         x = tf.cast(x, self.output_dtype)
@@ -108,6 +111,10 @@ class PositionalTokenEmbedding(PositionalEmbedding):
         return self.token_embedding.compute_mask(*args, **kwargs)
 
     def call(self, x):
+        """
+        x.shape = (batch_size, length)
+        """
+
         length = tf.shape(x)[1]
         # Multiply by sqrt(d_model) as outlined in section 3.4 of the original transformer paper
         x = self.token_embedding(x)
