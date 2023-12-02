@@ -4,6 +4,10 @@ import tensorflow as tf
 import pytest
 
 from tiny_tf_transformer.transformer import Encoder, Decoder, Transformer
+from tiny_tf_transformer.embedding_layers import (
+    PositionalEmbedding,
+)
+
 from tiny_tf_transformer.losses_and_metrics import (
     masked_sparse_categorical_accuracy,
     masked_sparse_categorical_cross_entropy,
@@ -17,6 +21,7 @@ def test_encoder():
     d_model = 32
     d_ff = 8
     num_heads = 8
+    seq_length = 123
 
     encoder = Encoder(
         num_layers=num_layers,
@@ -24,11 +29,11 @@ def test_encoder():
         vocab_size=vocab_size,
         num_heads=num_heads,
         d_ff=d_ff,
+        pos_embedding_fn=PositionalEmbedding(d_model=d_model, max_length = seq_length) 
     )
 
-    seq_length = 123
     x = tf.random.uniform(
-        (batch_size, seq_length), minval=0, maxval=vocab_size, dtype=tf.int32
+        (batch_size, seq_length, 1), minval=0, maxval=vocab_size, dtype=tf.float32
     )
 
     y = encoder(x)

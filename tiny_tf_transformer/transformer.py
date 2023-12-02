@@ -62,8 +62,8 @@ class Encoder(tf.keras.layers.Layer):
         self.dropout = tf.keras.layers.Dropout(ff_dropout_rate)
 
     def call(self, x: tf.Tensor, training: bool) -> tf.Tensor:
-        x = self.pos_embedding(x, training)
-        
+        x = self.pos_embedding(x)
+
         for i in range(self.num_layers):
             x = self.encoder_layers[i](x)
 
@@ -127,7 +127,6 @@ class Decoder(tf.keras.layers.Layer):
 
     def call(self, x: tf.Tensor, enc_output: tf.Tensor) -> tf.Tensor:
         x = self.pos_embedding(x)
-
 
         for i in range(self.num_layers):
             x = self.decoder_layers[i](x, enc_output)

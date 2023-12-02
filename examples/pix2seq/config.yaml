@@ -1,0 +1,22 @@
+data_config:
+  batch_size: 32 
+  max_side: 320 
+  num_bins: 100 
+  max_objects: 20
+  data_dir: "~/data"
+model:
+  name: "resnet50v2"
+  num_layers: 3 
+  d_model: 256 
+  num_heads: 8
+  d_ff: 512 
+  attention_dropout_rate: 0.1
+  ff_dropout_rate: 0.1
+training:
+  initial_learning_rate: 1e-3 
+  warmup_epochs: 10
+  epochs: 100 
+  steps_per_epoch: 500 
+
+checkpoint:  weights/pix2seq.weights
+checkpoint_output_dir: weights/pix2seq.weights
