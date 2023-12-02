@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="tiny-tf-transformer",
-    version="0.0.0",
+    version="0.0.1",
     author="Haobo Yu",
     author_email="haoboyu806@gmail.com",
     description="A tiny transformer library in TensorFlow 2",
@@ -19,10 +19,6 @@ setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
-        # Add any dependencies required by SynapseFlow here
-        "tensorflow>=2.3.0",
-        "tensorflow_datasets>=4.0.0",
-        "tensorflow_text",
         "numpy",
         "tqdm",
         "pytest",
