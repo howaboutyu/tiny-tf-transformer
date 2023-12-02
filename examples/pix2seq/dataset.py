@@ -55,6 +55,27 @@ def resize_image(image, bboxes, max_side=512):
     return image, bboxes
 
 
+def random_flip_horizontal(image, boxes):
+    """Flips image and boxes horizontally with 50% chance
+    Taken from: https://keras.io/examples/vision/retinanet/
+
+    Arguments:
+      image: A 3-D tensor of shape `(height, width, channels)` representing an
+        image.
+      boxes: A tensor with shape `(num_boxes, 4)` representing bounding boxes,
+        having normalized coordinates.
+
+    Returns:
+      Randomly flipped image and boxes
+    """
+    if tf.random.uniform(()) > 0.5:
+        image = tf.image.flip_left_right(image)
+        boxes = tf.stack(
+            [1 - boxes[:, 2], boxes[:, 1], 1 - boxes[:, 0], boxes[:, 3]], axis=-1
+        )
+    return image, boxes
+
+
 def preprocess_fn(data, max_side=512, num_bins=256):
     label = data["objects"]["label"]
     image = data["image"]
@@ -63,11 +84,6 @@ def preprocess_fn(data, max_side=512, num_bins=256):
     # [x,y,width,height]
     bboxes = tf.cast(bboxes, tf.float32)
     image = tf.cast(image, tf.float32)
-
-    # get shape
-    image_shape = tf.shape(image)
-    image_width = tf.cast(image_shape[1], tf.float32)
-    image_height = tf.cast(image_shape[0], tf.float32)
 
     bboxes = tf.cast(bboxes, tf.float32)
 
@@ -79,17 +95,17 @@ def preprocess_fn(data, max_side=512, num_bins=256):
 
     bboxes = tf.stack([x_min, y_min, x_max, y_max], axis=1)
 
-    #image = tf.image.resize(image, (max_side, max_side))
-
     image, bboxes = resize_image(image, bboxes, max_side=max_side)
 
     # pad image
     image = tf.image.pad_to_bounding_box(image, 0, 0, max_side, max_side)
 
+    image, bboxes = random_flip_horizontal(image, bboxes)
+
     # quantize bboxes
     bboxes = quantize(bboxes, bins=num_bins)
 
-    return image, bboxes, label, image_shape
+    return image, bboxes, label
 
 
 def quantize(x, bins=1000):
@@ -110,7 +126,7 @@ def dequantize(x, bins=1000):
         return float(x) / (bins - 1)
 
 
-def format_fn(image, bboxes, label, image_shape, sos_token, eos_token, max_objects=40):
+def format_fn(image, bboxes, label, sos_token, eos_token, max_objects=40):
     num_objects = tf.shape(bboxes)[0]
     sequence_ids = tf.range(num_objects)
 
@@ -126,18 +142,12 @@ def format_fn(image, bboxes, label, image_shape, sos_token, eos_token, max_objec
     random_labels = tf.cast(random_labels, tf.int32)
     target = tf.concat([random_bboxes, random_labels], axis=1)
 
-    """
-    bboxes = tf.reshape(bboxes, (-1, 4))
-    label = tf.reshape(label, (-1, 1))
-    label = tf.cast(label, tf.int32)
-    target = tf.concat([bboxes, label], axis=1)
-    """
-    # add one to labels as 0 is reserved for padding
-    target += 1
-
     # flatten target
     target = tf.reshape(target, (-1,))
     target = tf.concat([[sos_token], target, [eos_token] * 5], axis=0)
+
+    # add one to labels as 0 is reserved for padding in tf-tiny-transformer
+    target += 1
 
     decoder_input = target[..., :-1]
     decoder_output = target[..., 1:]
@@ -174,6 +184,8 @@ def sequence_decoder(decoder_output, eos_token, num_bins):
     # Reshape the decoder output to separate the bounding box coordinates and labels
     decoder_output = tf.reshape(decoder_output, (batch_size, -1, 5))
 
+    decoder_output -= 1
+
     # Extract bounding boxes and labels from the decoder output
     bboxes = decoder_output[..., :4]  # shape: (batch_size, num_objects, 4)
     labels = decoder_output[..., 4:]  # shape: (batch_size, num_objects, 1)
@@ -191,12 +203,12 @@ def sequence_decoder(decoder_output, eos_token, num_bins):
         if tf.shape(index)[0] != 0:
             # Use the index of the EOS token to filter the bounding boxes and labels
             index = index[0, 0]
-            bboxes_tmp = bboxes[i, :index] - 1
-            labels_tmp = labels[i, :index] - 1
+            bboxes_tmp = bboxes[i, :index]
+            labels_tmp = labels[i, :index]
         else:
             # If EOS token is not found, use all boxes and labels
-            bboxes_tmp = bboxes[i] - 1
-            labels_tmp = labels[i] - 1
+            bboxes_tmp = bboxes[i]
+            labels_tmp = labels[i]
 
         # Dequantize the bounding boxes
         bboxes_tmp = dequantize(bboxes_tmp, bins=num_bins)
