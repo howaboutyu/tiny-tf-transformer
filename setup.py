@@ -19,6 +19,9 @@ setup(
         "Operating System :: OS Independent",
     ],
     install_requires=[
+        "tensorflow>=2.0",
+        "tensorflow-datasets",
+        "tensorflow_text",
         "numpy",
         "tqdm",
         "pytest",
