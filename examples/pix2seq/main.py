@@ -13,8 +13,8 @@ from tiny_tf_transformer.losses_and_metrics import (
     masked_sparse_categorical_accuracy,
 )
 
-from model import get_pix2seq_model, WarmupThenDecaySchedule
-from dataset import preprocess_fn, format_fn, PAD_VALUE, sequence_decoder
+from model import get_pix2seq_model, WarmupThenDecaySchedule, get_target_vocab_size
+from dataset import preprocess_fn, format_fn, sequence_decoder
 from utils import visualize_detections
 
 
@@ -35,8 +35,6 @@ def get_dataset(data_config):
     num_bins = data_config.num_bins
     max_objects = data_config.max_objects
 
-    # Function to apply preprocessing and formatting
-    @tf.function
     def preprocess_and_format(x):
         # Preprocess the data
         preprocessed = preprocess_fn(x, max_side=max_side, num_bins=num_bins)
@@ -69,8 +67,6 @@ def get_dataset(data_config):
 
 
 def train(model, train_ds, val_ds, train_config):
-    
-
     model.fit(
         train_ds.take(train_config.steps_per_epoch),
         epochs=train_config.epochs,
@@ -98,10 +94,10 @@ def get_model(config):
         d_model=model_config.d_model,
         num_heads=model_config.num_heads,
         d_ff=model_config.d_ff,
-        target_vocab_size=num_bins + 4,  # Adjusted for special tokens
+        target_vocab_size=get_target_vocab_size(num_bins),
         attention_dropout_rate=model_config.attention_dropout_rate,
         ff_dropout_rate=model_config.ff_dropout_rate,
-        max_length=max_objects * 5,  # Assuming 5 tokens per object
+        max_length=max_objects * 5,  # num_objects * len([x, y, w, h, label])
     )
 
     lr_schedule = WarmupThenDecaySchedule(
@@ -155,7 +151,7 @@ def main():
     model = get_model(config)
 
     # load weights
-    if os.path.exists(config.checkpoint + '.index'):
+    if os.path.exists(config.checkpoint + ".index"):
         model.load_weights(config.checkpoint)
         logging.info(f"Loaded weights from {config.checkpoint}")
     else:
@@ -169,7 +165,7 @@ def main():
     ), "Need to specify newly trained output model path."
 
     model.save_weights(config.checkpoint_output_dir)
-    logging.info(f'Saved model at :{config.checkpoint_output_dir}')
+    logging.info(f"Saved model at :{config.checkpoint_output_dir}")
 
 
 if __name__ == "__main__":
