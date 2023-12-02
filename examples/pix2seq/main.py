@@ -34,7 +34,8 @@ def get_dataset(data_config):
     max_side = data_config.max_side
     num_bins = data_config.num_bins
     max_objects = data_config.max_objects
-
+    
+    @tf.function
     def preprocess_and_format(x):
         # Preprocess the data
         preprocessed = preprocess_fn(x, max_side=max_side, num_bins=num_bins)
@@ -68,7 +69,7 @@ def get_dataset(data_config):
 
 def train(model, train_ds, val_ds, train_config):
     model.fit(
-        train_ds,  # .take(train_config.steps_per_epoch),
+        train_ds.take(train_config.steps_per_epoch),
         epochs=train_config.epochs,
         validation_data=val_ds.take(1),
     )
