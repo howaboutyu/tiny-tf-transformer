@@ -20,7 +20,7 @@ def masked_sparse_categorical_cross_entropy(y_true, y_pred, mask_value=0):
     )
     mask = tf.cast(mask, dtype=loss_.dtype)
     loss_ *= mask
-    return tf.reduce_mean(loss_) / tf.reduce_sum(mask)
+    return tf.reduce_sum(loss_) / tf.reduce_sum(mask)
 
 
 def masked_sparse_categorical_accuracy(y_true, y_pred, mask_value=0):
