@@ -51,18 +51,22 @@ def get_pix2seq_model(
     preprocessor_fn = feature_extraction_info["preprocess"]
     feature_extractor = feature_extraction_info["model"]
 
-    # encoder
-    position_embedding = PositionalEmbedding(d_model=d_model, max_length=max_length)
-    encoder = Encoder(
-        num_layers=num_layers,
-        d_model=d_model,
-        vocab_size=target_vocab_size,
-        num_heads=num_heads,
-        d_ff=d_ff,
-        attention_dropout_rate=attention_dropout_rate,
-        ff_dropout_rate=ff_dropout_rate,
-        pos_embedding_fn=position_embedding,
-    )
+    def get_encoder(encoder_length):
+        position_embedding = PositionalEmbedding(d_model=d_model, max_length=max_length)
+        encoder = Encoder(
+            num_layers=num_layers,
+            d_model=d_model,
+            vocab_size=None,
+            num_heads=num_heads,
+            d_ff=d_ff,
+            attention_dropout_rate=attention_dropout_rate,
+            ff_dropout_rate=ff_dropout_rate,
+            pos_embedding_fn=PositionalEmbedding(
+                d_model=d_model, max_length=encoder_length
+            ),
+            max_length=None,
+        )
+        return encoder
 
     # get decoder model
     decoder = Decoder(
@@ -85,6 +89,9 @@ def get_pix2seq_model(
 
     # reshape feature grid from [n, n, d] to [n * n, d]
     x = tf.keras.layers.Reshape((-1, x.shape[-1]))(x)
+
+    # get encoder based on number of features of feature extractor
+    encoder = get_encoder(x.shape[1])
 
     x = encoder(x)
 

@@ -68,7 +68,7 @@ def get_dataset(data_config):
 
 def train(model, train_ds, val_ds, train_config):
     model.fit(
-        train_ds.take(train_config.steps_per_epoch),
+        train_ds,  # .take(train_config.steps_per_epoch),
         epochs=train_config.epochs,
         validation_data=val_ds.take(1),
     )
