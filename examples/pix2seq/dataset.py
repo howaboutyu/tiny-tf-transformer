@@ -5,7 +5,6 @@ from utils import visualize_detections
 
 PAD_VALUE = 0
 
-# TODO: DELETE
 # int2str = dataset_info.features["objects"]["label"].int2str
 # print(int2str)
 #
@@ -42,9 +41,8 @@ def resize_image(image, bboxes, max_side=512):
     # Resize the image with the computed size
     image = tf.image.resize(image, (new_height, new_width))
 
-    # Resize the bounding boxes
-    w_ratio = tf.cast(new_width, tf.float32) / tf.cast(width, tf.float32)
-    h_ratio = tf.cast(new_height, tf.float32) / tf.cast(height, tf.float32)
+    w_ratio = tf.cast(new_width, tf.float32) / tf.cast(max_side, tf.float32)
+    h_ratio = tf.cast(new_height, tf.float32) / tf.cast(max_side, tf.float32)
 
     bboxes = tf.cast(bboxes, tf.float32)
     x_min = bboxes[:, 0] * w_ratio
@@ -81,12 +79,12 @@ def preprocess_fn(data, max_side=512, num_bins=256):
 
     bboxes = tf.stack([x_min, y_min, x_max, y_max], axis=1)
 
-    image = tf.image.resize(image, (max_side, max_side))
+    #image = tf.image.resize(image, (max_side, max_side))
 
-    # image, bboxes = resize_image(image, bboxes, max_side=max_side)
+    image, bboxes = resize_image(image, bboxes, max_side=max_side)
 
     # pad image
-    # image = tf.image.pad_to_bounding_box(image, 0, 0, max_side, max_side)
+    image = tf.image.pad_to_bounding_box(image, 0, 0, max_side, max_side)
 
     # quantize bboxes
     bboxes = quantize(bboxes, bins=num_bins)
