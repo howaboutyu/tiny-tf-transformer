@@ -1,5 +1,6 @@
 import tensorflow as tf
-from tiny_tf_transformer.transformer import Decoder
+from tiny_tf_transformer.transformer import Decoder, Encoder
+from tiny_tf_transformer.embedding_layers import PositionalEmbedding
 
 
 def get_target_vocab_size(
@@ -7,8 +8,7 @@ def get_target_vocab_size(
 ):
     # 3 special tokens: <pad>, <sos>, <eos>
     # and 1 for shifting the values by 1
-    # 80 is the maximum number of classes in COCO dataset
-    return min(num_bins, 80) + 4
+    return num_bins + 4
 
 
 def get_model_and_preprocessing(model_name):
@@ -51,6 +51,19 @@ def get_pix2seq_model(
     preprocessor_fn = feature_extraction_info["preprocess"]
     feature_extractor = feature_extraction_info["model"]
 
+    # encoder
+    position_embedding = PositionalEmbedding(d_model=d_model, max_length=max_length)
+    encoder = Encoder(
+        num_layers=num_layers,
+        d_model=d_model,
+        vocab_size=target_vocab_size,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        attention_dropout_rate=attention_dropout_rate,
+        ff_dropout_rate=ff_dropout_rate,
+        pos_embedding_fn=position_embedding,
+    )
+
     # get decoder model
     decoder = Decoder(
         num_layers=num_layers,
@@ -72,6 +85,8 @@ def get_pix2seq_model(
 
     # reshape feature grid from [n, n, d] to [n * n, d]
     x = tf.keras.layers.Reshape((-1, x.shape[-1]))(x)
+
+    x = encoder(x)
 
     # use a causal decoder
     x = decoder(decoder_input, x)

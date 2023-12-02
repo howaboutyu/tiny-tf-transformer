@@ -1,7 +1,7 @@
 data_config:
   batch_size: 32 
   max_side: 320 
-  num_bins: 5 
+  num_bins: 200 
   max_objects: 30
   data_dir: "~/data"
 model:
