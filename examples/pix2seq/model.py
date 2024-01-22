@@ -11,6 +11,46 @@ def get_target_vocab_size(
     return num_bins + 4
 
 
+class AddPositionalEmbedding(tf.keras.layers.Layer):
+    def __init__(self, max_length, feature_dim, **kwargs):
+        super(AddPositionalEmbedding, self).__init__(**kwargs)
+        self.max_length = max_length
+        self.feature_dim = feature_dim
+        self.position_embedding = tf.keras.layers.Embedding(
+            input_dim=max_length, 
+            output_dim=feature_dim
+        )
+        self.dense = tf.keras.layers.Dense(feature_dim)
+
+    def call(self, x):
+        batch_size, sequence_length = tf.shape(x)[0], tf.shape(x)[1]
+        positions = tf.range(start=0, limit=sequence_length, delta=1)
+        positions = self.position_embedding(positions) 
+        x = tf.nn.relu(x)
+        x = self.dense(x) + positions
+        return x
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+class eeAddPositionalEmbedding(PositionalEmbedding):
+
+    def call(self, x):
+        """
+        x.shape = (batch_size, length, feature_dim)
+        """
+        length = tf.shape(x)[1]
+
+        x = tf.cast(x, self.output_dtype)
+        x = self.masking_layer(x)
+
+        x = tf.cast(x, self.output_dtype)
+        
+        # Add the positional encoding
+        x = x + self.pos_encoding[:, :length]
+
+        return x
+
 def get_model_and_preprocessing(model_name):
     model_preprocessing_dict = {
         "resnet50v2": {
@@ -52,7 +92,7 @@ def get_pix2seq_model(
     feature_extractor = feature_extraction_info["model"]
 
     def get_encoder(encoder_length):
-        position_embedding = PositionalEmbedding(d_model=d_model, max_length=max_length)
+        position_embedding = AddPositionalEmbedding(9, d_model)
         encoder = Encoder(
             num_layers=num_layers,
             d_model=d_model,
@@ -61,11 +101,10 @@ def get_pix2seq_model(
             d_ff=d_ff,
             attention_dropout_rate=attention_dropout_rate,
             ff_dropout_rate=ff_dropout_rate,
-            pos_embedding_fn=PositionalEmbedding(
-                d_model=d_model, max_length=encoder_length
-            ),
+            pos_embedding_fn=position_embedding,
             max_length=None,
         )
+
         return encoder
 
     # get decoder model
@@ -92,6 +131,7 @@ def get_pix2seq_model(
 
     # get encoder based on number of features of feature extractor
     encoder = get_encoder(x.shape[1])
+
 
     x = encoder(x)
 
