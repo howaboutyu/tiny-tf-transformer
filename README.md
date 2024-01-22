@@ -1,3 +1,5 @@
+[![Pytest](https://github.com/howaboutyu/tiny-tf-transformer/actions/workflows/pytest.yml/badge.svg)](https://github.com/howaboutyu/tiny-tf-transformer/actions/workflows/pytest.yml)
+
 ## tiny-tf-transformer (yet another transformer implementation)
 
 This is a tiny transformer implementation in tensorflow 2. It is based on the [attention is all you need](https://arxiv.org/abs/1706.03762) paper. The transformer implementation is based on the [tensorflow tutorial](https://www.tensorflow.org/tutorials/text/transformer). It is mainly used for my own learning purposes and also has some paper implementation related to transformers.
