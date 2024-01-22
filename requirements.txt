@@ -1,0 +1,6 @@
+tensorflow>=2.0
+tensorflow-datasets
+tensorflow_text
+numpy
+tqdm
+pytest
