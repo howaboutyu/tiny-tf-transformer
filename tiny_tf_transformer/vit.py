@@ -74,7 +74,7 @@ class PositionEmbeddingModel(tf.keras.Model):
             position_embedding_y, 0
         )  # Shape: (1, max_width, d_model)
         pos_x = position_embedding_x + position_embedding_y
-        x = pos_x + self.dense(x)
+        x = pos_x + x 
 
         print("xshape", x.shape)
 
@@ -112,13 +112,13 @@ for _ in range(4):
 # x = tf.keras.layers.Reshape((max_height, max_width, d_model))(x)
 # x = tf.keras.layers.GlobalAveragePooling2D()(x)
 # x = tf.keras.layers.Dense(128, activation='relu')(x)
-x = x[:, :20, :20]
-x = tf.keras.layers.Dense(128, activation="relu")(x)
+x = x[:, -20:, :20]
 x = tf.keras.layers.Dense(10, activation="linear")(x)
 
 # Create the Keras model
 keras_model = tf.keras.Model(inputs=inputs, outputs=x)
 
+keras_model.load_weights('saved_model.h5')
 # Compile the model
 loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
@@ -174,7 +174,7 @@ def load_data(source_folder, target_folder):
     dataset = tf.data.Dataset.zip((source_dataset, target_dataset))
     dataset = (
         dataset.shuffle(buffer_size=1024)
-        .batch(32)
+        .batch(128)
         .prefetch(buffer_size=tf.data.AUTOTUNE)
     )
 
@@ -298,4 +298,4 @@ save_folder = "pred"
 source_folder = "/root/arc/largest_val"
 # Assuming keras_model is your trained model
 predict_and_save_visualizations(keras_model, source_folder, save_folder, num_images=10)
-keras_model.save("saved_model")
+keras_model.save("saved_model.h5")
