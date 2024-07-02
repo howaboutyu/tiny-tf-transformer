@@ -1,4 +1,7 @@
 import tensorflow as tf
+from tensorflow.keras import mixed_precision
+policy = mixed_precision.Policy('mixed_float16')
+mixed_precision.set_global_policy(policy)
 
 from tiny_tf_transformer.embedding_layers import (
     PositionalTokenEmbedding,
@@ -29,10 +32,7 @@ class PositionEmbeddingModel(tf.keras.Model):
         self.position_embedding_x_fn = tf.keras.layers.Embedding(input_dim=max_height, output_dim=d_model)
         self.position_embedding_y_fn = tf.keras.layers.Embedding(input_dim=max_width, output_dim=d_model)
 
-        self.reshape1 = tf.keras.layers.Reshape((max_height * max_width, d_model))
-        self.add = tf.keras.layers.Add()
         self.dense = tf.keras.layers.Dense(d_model)
-        self.reshape2 = tf.keras.layers.Reshape((max_height, max_width, d_model))
 
     def call(self, inputs):
         position_embedding_x = self.position_embedding_x_fn(tf.range(self.max_height))
@@ -50,7 +50,7 @@ class PositionEmbeddingModel(tf.keras.Model):
 input_shape = (30, 30, 1)
 max_height = 30
 max_width = 30
-d_model = 128
+d_model = 32 
 num_heads = 8
 key_dim = 16
 attention_dropout = 0.1
@@ -59,24 +59,24 @@ inputs = tf.keras.layers.Input(shape=input_shape)
 
 # Instantiate the model
 pos_embedding = PositionEmbeddingModel(max_height=max_height, max_width=max_width, d_model=d_model) 
-self_attn = SelfAttention(num_heads= num_heads, key_dim= key_dim, attention_dropout= attention_dropout)
 x = pos_embedding(inputs)
 
-for _ in range(3):
+for _ in range(4):
+    self_attn = SelfAttention(num_heads= num_heads, key_dim= key_dim, attention_dropout= attention_dropout)
     x = self_attn(x)
 
 
 # Reshape and add dense layers for classification
-x = tf.keras.layers.Reshape((max_height, max_width, d_model))(x)
-x = tf.keras.layers.GlobalAveragePooling2D()(x)
-x = tf.keras.layers.Dense(128, activation='relu')(x)
-x = tf.keras.layers.Dense(10, activation='softmax')(x)
+#x = tf.keras.layers.Reshape((max_height, max_width, d_model))(x)
+#x = tf.keras.layers.GlobalAveragePooling2D()(x)
+#x = tf.keras.layers.Dense(128, activation='relu')(x)
+x = tf.keras.layers.Dense(1, activation='linear')(x)
 
 # Create the Keras model
 keras_model = tf.keras.Model(inputs=inputs, outputs=x)
 
 # Compile the model
-keras_model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+keras_model.compile(optimizer='adamw', loss='mse', metrics=['accuracy'])
 
 # Print the model summary
 keras_model.summary()
@@ -100,5 +100,5 @@ y_test = to_categorical(y_test, 10)
 
 
 # Train the model
-keras_model.fit(x_train, y_train, epochs=10, validation_data=(x_test, y_test))
+keras_model.fit(x_train, x_train, epochs=10, validation_data=(x_test, x_test))
 
