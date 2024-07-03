@@ -1,6 +1,7 @@
 import tensorflow as tf
 import os
 from tensorflow.keras import mixed_precision
+import numpy as np
 
 policy = mixed_precision.Policy("mixed_float16")
 mixed_precision.set_global_policy(policy)
@@ -25,7 +26,7 @@ import tensorflow as tf
 
 
 class PositionEmbeddingModel(tf.keras.Model):
-    def __init__(self, max_height=30, max_width=30, d_model=128):
+    def __init__(self, max_height=30, max_width=30, d_model=128, use_conv=True):
         super(PositionEmbeddingModel, self).__init__()
         self.max_height = max_height
         self.max_width = max_width
@@ -41,31 +42,36 @@ class PositionEmbeddingModel(tf.keras.Model):
             input_dim=10, output_dim=d_model
         )
 
-        self.dense = tf.keras.layers.Dense(d_model)
+        self.dense = tf.keras.layers.Dense(d_model, use_bias=False)
         self.conv = tf.keras.layers.Conv2D(
             d_model,
             (2, 2),
             strides=(2, 2),
             padding="same",
+            use_bias=False,
         )
+
+        self.use_conv = use_conv
 
     def call(self, inputs):
         inputs = tf.cast(inputs, tf.int8)
+        # import pdb; pdb.set_trace()
 
-        print(inputs.shape)
+        # print(inputs.shape)
         x = tf.one_hot(inputs, 10, axis=-1)
-        # x = tf.squeeze(x, -2)
-        x = self.conv(x)
+        if len(x.shape) == 5:
+            x = tf.squeeze(x, -2)
+
+        if self.use_conv:
+            x = self.conv(x)
+        else:
+            x = self.dense(x)
 
         w = x.shape[1]
         h = x.shape[2]
 
-        position_embedding_x = self.position_embedding_x_fn(
-            tf.range(self.max_height // 2)
-        )
-        position_embedding_y = self.position_embedding_y_fn(
-            tf.range(self.max_width // 2)
-        )
+        position_embedding_x = self.position_embedding_x_fn(tf.range(w))
+        position_embedding_y = self.position_embedding_y_fn(tf.range(h))
 
         position_embedding_x = tf.expand_dims(
             position_embedding_x, 1
@@ -74,15 +80,112 @@ class PositionEmbeddingModel(tf.keras.Model):
             position_embedding_y, 0
         )  # Shape: (1, max_width, d_model)
         pos_x = position_embedding_x + position_embedding_y
-        x = pos_x + x 
+        pos_x = pos_x[tf.newaxis, ...]
 
-        print("xshape", x.shape)
+        x = pos_x + x
+
+        num_elements = x.shape[1] * x.shape[2]
+        x = tf.reshape(x, (-1, num_elements, self.d_model))
+
+        return x
+
+
+class Decoder(tf.keras.layers.Layer):
+    """ """
+
+    def __init__(
+        self,
+        num_layers: int,
+        d_model: int,
+        num_heads: int,
+        d_ff: int,
+        attention_dropout_rate: float = 0.1,
+        ff_dropout_rate: float = 0.1,
+    ):
+        super(Decoder, self).__init__()
+
+        self.d_model = d_model
+        self.num_layers = num_layers
+
+        self.decoder_layers = [
+            DecoderLayer(
+                num_heads=num_heads,
+                d_model=d_model,
+                d_ff=d_ff,
+                attention_dropout_rate=attention_dropout_rate,
+                ff_dropout_rate=ff_dropout_rate,
+            )
+            for _ in range(num_layers)
+        ]
+
+        self.dropout = tf.keras.layers.Dropout(ff_dropout_rate)
+
+    def call(self, x: tf.Tensor, enc_output: tf.Tensor) -> tf.Tensor:
+        for i in range(self.num_layers):
+            x = self.decoder_layers[i](x, enc_output)
+
+        return x
+
+
+class Encoder(tf.keras.layers.Layer):
+    """
+    The encoder is made up of:
+    Positional Encoding -> Encoder Layers defined by `num_layers`
+
+    The positional encoding/embedding can be passed in as a function, if not
+    then the default sine cosine positional encoding with token embedding is used.
+
+
+    """
+
+    def __init__(
+        self,
+        num_layers: int,
+        d_model: int,
+        num_heads: int,
+        d_ff: int,
+        attention_dropout_rate: float = 0.1,
+        ff_dropout_rate: float = 0.1,
+        image_height: int = 30,
+        image_width: int = 30,
+    ):
+        super().__init__()
+
+        self.d_model = d_model
+        self.num_layers = num_layers
+
+        # Instantiate the model
+        self.pos_embedding = PositionEmbeddingModel(
+            max_height=image_height, max_width=image_width, d_model=d_model
+        )
+
+        # create a list of encoder layers
+        self.encoder_layers = [
+            EncoderLayer(
+                num_heads=num_heads,
+                d_model=d_model,
+                d_ff=d_ff,
+                attention_dropout=attention_dropout_rate,
+                ff_dropout_rate=ff_dropout_rate,
+            )
+            for _ in range(num_layers)
+        ]
+
+        self.dropout = tf.keras.layers.Dropout(ff_dropout_rate)
+
+    def call(self, x: tf.Tensor, training: bool = True) -> tf.Tensor:
+        x = self.pos_embedding(x)
+
+        for i in range(self.num_layers):
+            x = self.encoder_layers[i](x)
 
         return x
 
 
 # Define the input shape
-input_shape = (20 * 3, 20 * 2)
+input_shape = (20 * 2, 20 * 2)
+target_height = 20
+target_width = 20
 max_height = 20 * 3
 max_width = 20 * 2
 d_model = 128
@@ -91,34 +194,59 @@ num_heads = 8
 key_dim = 16
 attention_dropout = 0.1
 num_attention_heads = 8
-inputs = tf.keras.layers.Input(shape=input_shape)
 
-# Instantiate the model
-pos_embedding = PositionEmbeddingModel(
-    max_height=max_height, max_width=max_width, d_model=d_model
+decoder = Decoder(
+    num_layers=4,
+    d_model=d_model,
+    num_heads=num_heads,
+    d_ff=d_ff,
+    attention_dropout_rate=attention_dropout,
+    ff_dropout_rate=0.1,
 )
-x_original = pos_embedding(inputs)
-
-x = x_original
 
 
-for _ in range(4):
-    encoding_layer = EncoderLayer(num_heads=num_heads, d_model=d_model, d_ff=d_ff)
-    # cross_attention = CrossAttention(num_heads=num_heads, key_dim=d_model)
-    x = encoding_layer(x)
-    # x = cross_attention(x, x_original)
+encoder_block = Encoder(
+    num_layers=4,
+    d_model=d_model,
+    num_heads=num_heads,
+    d_ff=d_ff,
+    attention_dropout_rate=attention_dropout,
+    ff_dropout_rate=0.1,
+    image_height=max_height,
+    image_width=max_width,
+)
+# input = tf.keras.layers.Input(shape=(max_height, max_width, 1))
 
-# Reshape and add dense layers for classification
-# x = tf.keras.layers.Reshape((max_height, max_width, d_model))(x)
-# x = tf.keras.layers.GlobalAveragePooling2D()(x)
-# x = tf.keras.layers.Dense(128, activation='relu')(x)
-x = x[:, -20:, :20]
+inputs = tf.keras.layers.Input(shape=input_shape, name="input")
+encoder_features = encoder_block(inputs)
+
+inputs_decoder = tf.keras.layers.Input(
+    shape=(target_height, target_width), name="decoder_input"
+)
+
+pos_embedding = PositionEmbeddingModel(
+    max_height=20, max_width=20, d_model=d_model, use_conv=False
+)
+decoder_input = pos_embedding(inputs_decoder)
+
+
+x = decoder(decoder_input, encoder_features)
+
+
+# reshape to [batch, height, width, depth]
+#
+latent_shape = int(np.sqrt(x.shape[1]))
+
+x = tf.keras.layers.Reshape((latent_shape, latent_shape, d_model))(x)
+
+x = tf.keras.layers.Dense(32, activation="relu")(x)
+
 x = tf.keras.layers.Dense(10, activation="linear")(x)
 
 # Create the Keras model
-keras_model = tf.keras.Model(inputs=inputs, outputs=x)
+keras_model = tf.keras.Model(inputs=[inputs, inputs_decoder], outputs=x)
 
-keras_model.load_weights('saved_model.h5')
+# keras_model.load_weights("saved_model.h5")
 # Compile the model
 loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
 lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
@@ -126,7 +254,7 @@ lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
 )
 
 opt = tf.keras.optimizers.AdamW(learning_rate=1e-4)
-keras_model.compile(optimizer=opt, loss=loss, run_eagerly=False)
+keras_model.compile(optimizer=opt, loss=loss, run_eagerly=True)
 
 # Print the model summary
 keras_model.summary()
@@ -145,7 +273,7 @@ def load_image(image_path, flip=False):
     return image
 
 
-def load_data(source_folder, target_folder):
+def load_data(source_folder, target_source_folder, target_folder):
     source_images = sorted(
         [
             os.path.join(source_folder, f)
@@ -161,36 +289,57 @@ def load_data(source_folder, target_folder):
         ]
     )
 
+    target_source_images = sorted(
+        [
+            os.path.join(target_source_folder, f)
+            for f in os.listdir(target_source_folder)
+            if f.endswith(".png")
+        ]
+    )
+
     print(f"number images: {len(source_images)}")
 
-    target_map = lambda x: load_image(x, True)
+    target_map = lambda x: load_image(x)
     source_dataset = tf.data.Dataset.from_tensor_slices(source_images).map(
         load_image, num_parallel_calls=tf.data.AUTOTUNE
     )
     target_dataset = tf.data.Dataset.from_tensor_slices(target_images).map(
         target_map, num_parallel_calls=tf.data.AUTOTUNE
     )
+    target_source_dataset = tf.data.Dataset.from_tensor_slices(
+        target_source_images
+    ).map(target_map, num_parallel_calls=tf.data.AUTOTUNE)
 
-    dataset = tf.data.Dataset.zip((source_dataset, target_dataset))
+    input_ds = tf.data.Dataset.zip((source_dataset, target_source_dataset))
+
+    dataset = tf.data.Dataset.zip((input_ds, target_dataset))
+
+    def generator(inputs, output):
+        return {"input": inputs[0], "decoder_input": inputs[1]}, output
+
+    dataset = dataset.map(generator)
+
     dataset = (
         dataset.shuffle(buffer_size=1024)
-        .batch(128)
+        .batch(10)
         .prefetch(buffer_size=tf.data.AUTOTUNE)
     )
 
     return dataset
 
 
-source_folder = "/root/arc/largest"
-target_folder = "/root/arc/largest_target"
+source_folder = "/Users/david/Documents/Projects/arc/largest"
+target_folder = "/Users/david/Documents/Projects/arc/largest_target"
+target_source_folder = "/Users/david/Documents/Projects/arc/largest_source"
 
-val_source_folder = "/root/arc/largest_val"
-val_target_folder = "/root/arc/largest_val_target"
+val_source_folder = source_folder  # "/root/arc/largest_val"
+val_target_folder = target_folder  # "/root/arc/largest_val_target"
+val_target_source_folder = target_source_folder  # "/root/arc/largest_val_target"
 
 
 # Load the dataset
-train_dataset = load_data(source_folder, target_folder)
-val_dataset = load_data(val_source_folder, val_target_folder)
+train_dataset = load_data(source_folder, target_source_folder, target_folder)
+val_dataset = load_data(val_source_folder, val_target_source_folder, val_target_folder)
 
 
 # Train the model
