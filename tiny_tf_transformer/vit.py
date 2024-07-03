@@ -55,7 +55,6 @@ class PositionEmbeddingModel(tf.keras.Model):
 
     def call(self, inputs):
         inputs = tf.cast(inputs, tf.int8)
-        # import pdb; pdb.set_trace()
 
         # print(inputs.shape)
         x = tf.one_hot(inputs, 10, axis=-1)
@@ -70,8 +69,8 @@ class PositionEmbeddingModel(tf.keras.Model):
         w = x.shape[1]
         h = x.shape[2]
 
-        position_embedding_x = self.position_embedding_x_fn(tf.range(w))
-        position_embedding_y = self.position_embedding_y_fn(tf.range(h))
+        position_embedding_x = self.position_embedding_x_fn(tf.range(self.max_height))
+        position_embedding_y = self.position_embedding_y_fn(tf.range(self.max_width))
 
         position_embedding_x = tf.expand_dims(
             position_embedding_x, 1
@@ -182,83 +181,129 @@ class Encoder(tf.keras.layers.Layer):
         return x
 
 
-# Define the input shape
-input_shape = (20 * 2, 20 * 2)
+class ImageTransformerModel(tf.keras.Model):
+    def __init__(self, input_shape, target_shape, d_model, d_ff, num_heads, key_dim,
+                 attention_dropout, num_attention_heads, num_layers, max_height, max_width):
+        super(ImageTransformerModel, self).__init__()
+        
+        self.input_shape = input_shape
+        self.target_shape = target_shape
+        self.d_model = d_model
+        self.d_ff = d_ff
+        self.num_heads = num_heads
+        self.key_dim = key_dim
+        self.attention_dropout = attention_dropout
+        self.num_attention_heads = num_attention_heads
+        self.num_layers = num_layers
+        self.max_height = max_height
+        self.max_width = max_width
+
+        self.encoder_block = self._build_encoder()
+        self.decoder = self._build_decoder()
+        self.pos_embedding = PositionEmbeddingModel(
+            max_height=target_shape[0], max_width=target_shape[1], d_model=d_model, use_conv=False
+        )
+        self.dense1 = tf.keras.layers.Dense(32, activation="relu")
+        self.dense2 = tf.keras.layers.Dense(10, activation="linear")
+
+    def _build_decoder(self):
+        return Decoder(
+            num_layers=self.num_layers,
+            d_model=self.d_model,
+            num_heads=self.num_heads,
+            d_ff=self.d_ff,
+            attention_dropout_rate=self.attention_dropout,
+            ff_dropout_rate=0.1,
+        )
+
+    def _build_encoder(self):
+        return Encoder(
+            num_layers=self.num_layers,
+            d_model=self.d_model,
+            num_heads=self.num_heads,
+            d_ff=self.d_ff,
+            attention_dropout_rate=self.attention_dropout,
+            ff_dropout_rate=0.1,
+            image_height=self.input_shape[0]//2,
+            image_width=self.input_shape[1]//2,
+        )
+
+    def call(self, inputs):
+        if isinstance(inputs, dict):
+            inputs_encoder = inputs['input']
+            inputs_decoder = inputs['decoder_input']
+        else:
+            inputs_encoder = inputs[0]
+            inputs_decoder = inputs[1]
+
+        # Encoder
+        encoder_features = self.encoder_block(inputs_encoder)
+
+        # Decoder
+        decoder_input = self.pos_embedding(inputs_decoder)
+        x = self.decoder(decoder_input, encoder_features)
+
+        # Reshape to [batch, height, width, depth]
+        latent_shape = int(np.sqrt(x.shape[1]))
+        x = tf.keras.layers.Reshape((self.target_shape[0], self.target_shape[1], self.d_model))(x)
+
+        x = self.dense1(x)
+        x = self.dense2(x)
+
+        return x
+
+    def compile_model(self, initial_learning_rate=1e-4, decay_steps=10000, decay_rate=0.9):
+        loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
+        lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+            initial_learning_rate=initial_learning_rate, decay_steps=decay_steps, decay_rate=decay_rate
+        )
+        opt = tf.keras.optimizers.AdamW(learning_rate=1e-5)
+        self.compile(optimizer=opt, loss=loss, run_eagerly=False)
+
+    def summary(self):
+        inputs_encoder = tf.keras.layers.Input(shape=self.input_shape, name="input")
+        inputs_decoder = tf.keras.layers.Input(shape=self.target_shape, name="decoder_input")
+        input_dict = {
+                'input': inputs_encoder,
+                'input_decoder': inputs_decoder
+                }
+        model = tf.keras.Model(inputs=[inputs_encoder, inputs_decoder], outputs=self.call([inputs_encoder, inputs_decoder]))
+        model.summary()
+
+
+
+# Usage
+input_shape = (20 * 3, 20 * 2)
 target_height = 20
 target_width = 20
 max_height = 20 * 3
 max_width = 20 * 2
-d_model = 128
+d_model = 64
 d_ff = 64
 num_heads = 8
 key_dim = 16
 attention_dropout = 0.1
 num_attention_heads = 8
+num_layers = 2
 
-decoder = Decoder(
-    num_layers=4,
+transformer_model = ImageTransformerModel(
+    input_shape=input_shape,
+    target_shape=(target_height, target_width),
     d_model=d_model,
-    num_heads=num_heads,
     d_ff=d_ff,
-    attention_dropout_rate=attention_dropout,
-    ff_dropout_rate=0.1,
-)
-
-
-encoder_block = Encoder(
-    num_layers=4,
-    d_model=d_model,
     num_heads=num_heads,
-    d_ff=d_ff,
-    attention_dropout_rate=attention_dropout,
-    ff_dropout_rate=0.1,
-    image_height=max_height,
-    image_width=max_width,
-)
-# input = tf.keras.layers.Input(shape=(max_height, max_width, 1))
-
-inputs = tf.keras.layers.Input(shape=input_shape, name="input")
-encoder_features = encoder_block(inputs)
-
-inputs_decoder = tf.keras.layers.Input(
-    shape=(target_height, target_width), name="decoder_input"
+    key_dim=key_dim,
+    attention_dropout=attention_dropout,
+    num_attention_heads=num_attention_heads,
+    num_layers=num_layers,
+    max_height=max_height,
+    max_width=max_width
 )
 
-pos_embedding = PositionEmbeddingModel(
-    max_height=20, max_width=20, d_model=d_model, use_conv=False
-)
-decoder_input = pos_embedding(inputs_decoder)
+transformer_model.compile_model()
+transformer_model.summary()
 
-
-x = decoder(decoder_input, encoder_features)
-
-
-# reshape to [batch, height, width, depth]
-#
-latent_shape = int(np.sqrt(x.shape[1]))
-
-x = tf.keras.layers.Reshape((latent_shape, latent_shape, d_model))(x)
-
-x = tf.keras.layers.Dense(32, activation="relu")(x)
-
-x = tf.keras.layers.Dense(10, activation="linear")(x)
-
-# Create the Keras model
-keras_model = tf.keras.Model(inputs=[inputs, inputs_decoder], outputs=x)
-
-# keras_model.load_weights("saved_model.h5")
-# Compile the model
-loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
-lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-    initial_learning_rate=1e-4, decay_steps=200, decay_rate=0.9
-)
-
-opt = tf.keras.optimizers.AdamW(learning_rate=1e-4)
-keras_model.compile(optimizer=opt, loss=loss, run_eagerly=True)
-
-# Print the model summary
-keras_model.summary()
-
+keras_model = transformer_model
 
 # Load and preprocess data from folders
 def load_image(image_path, flip=False):
@@ -324,17 +369,18 @@ def load_data(source_folder, target_source_folder, target_folder):
         .batch(10)
         .prefetch(buffer_size=tf.data.AUTOTUNE)
     )
-
+    
     return dataset
 
 
-source_folder = "/Users/david/Documents/Projects/arc/largest"
-target_folder = "/Users/david/Documents/Projects/arc/largest_target"
-target_source_folder = "/Users/david/Documents/Projects/arc/largest_source"
+source_folder = "/root/arc/largest"
+target_folder = "/root/arc/largest_target"
+target_source_folder = "/root/arc/largest_source"
 
-val_source_folder = source_folder  # "/root/arc/largest_val"
-val_target_folder = target_folder  # "/root/arc/largest_val_target"
-val_target_source_folder = target_source_folder  # "/root/arc/largest_val_target"
+val_source_folder = "/root/arc/largest_val"
+val_target_folder = "/root/arc/largest_val_target"
+val_target_source_folder = "/root/arc/largest_val_source"
+
 
 
 # Load the dataset
@@ -344,6 +390,7 @@ val_dataset = load_data(val_source_folder, val_target_source_folder, val_target_
 
 # Train the model
 # early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
 
 keras_model.fit(
     train_dataset,
