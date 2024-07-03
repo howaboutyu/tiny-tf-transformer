@@ -1,6 +1,7 @@
 import tensorflow as tf
 import os
 from tensorflow.keras import mixed_precision
+from tensorflow.keras import layers 
 import numpy as np
 
 policy = mixed_precision.Policy("mixed_float16")
@@ -23,7 +24,56 @@ from tiny_tf_transformer.transformer_layers import (
 
 
 import tensorflow as tf
+class CustomConvModel(tf.keras.Model):
+    def __init__(self, d_model=128, num_classes=10):
+        super(CustomConvModel, self).__init__()
 
+        self.input_layer = layers.InputLayer(input_shape=(None, None, d_model))
+
+        # Branch 1: 1x1 Convolution
+        self.branch1 = layers.Conv2D(d_model, (1, 1), activation='relu', padding='same')
+
+        # Branch 2: 3x3 Convolution
+        self.branch2 = layers.Conv2D(d_model, (3, 3), activation='relu', padding='same')
+
+        # Branch 3: 5x5 Convolution
+        self.branch3 = layers.Conv2D(d_model, (5, 5), activation='relu', padding='same')
+
+        # Additional Convolutional layers after merging
+        self.conv1 = layers.Conv2D(64, (2, 1), activation='relu', padding='valid')
+        self.conv2 = layers.Conv2D(64, (1, 2), activation='relu', padding='valid')
+
+        self.conv_list = [
+            layers.Conv2D(64, (3, 3), activation='relu', padding='valid', groups=4)
+
+            for _ in range(20)
+            ]
+
+
+        #self.pool1 = layers.MaxPooling2D((2, 2))
+        self.conv3 = layers.Conv2D(d_model, (3, 3), activation='relu', padding='valid')
+        #self.pool2 = layers.MaxPooling2D((2, 2))
+
+        
+
+    def call(self, x):
+
+        # Branches
+        branch1_output = self.branch1(x)
+        branch2_output = self.branch2(x)
+        branch3_output = self.branch3(x)
+
+        # Merge branches
+        merged = layers.concatenate([branch1_output, branch2_output, branch3_output], axis=-1)
+
+        # Additional Convolutional layers after merging
+        x = self.conv1(merged)
+
+        for i  in range(8):
+            x = self.conv_list[i](x)
+        
+        
+        return x 
 
 class PositionEmbeddingModel(tf.keras.Model):
     def __init__(self, max_height=30, max_width=30, d_model=128, use_conv=True):
@@ -31,24 +81,36 @@ class PositionEmbeddingModel(tf.keras.Model):
         self.max_height = max_height
         self.max_width = max_width
         self.d_model = d_model
+        self.feature_model = CustomConvModel(d_model=d_model)
 
         self.position_embedding_x_fn = tf.keras.layers.Embedding(
-            input_dim=max_height, output_dim=d_model
+            input_dim=max_width, output_dim=d_model
         )
         self.position_embedding_y_fn = tf.keras.layers.Embedding(
-            input_dim=max_width, output_dim=d_model
+            input_dim=max_height, output_dim=d_model
         )
         self.class_embedding_fn = tf.keras.layers.Embedding(
             input_dim=10, output_dim=d_model
         )
 
-        self.dense = tf.keras.layers.Dense(d_model, use_bias=False)
+        self.dense = tf.keras.layers.Dense(d_model, activation='relu', use_bias=True)
+        self.dense_position = tf.keras.layers.Dense(d_model, activation='relu', use_bias=True)
         self.conv = tf.keras.layers.Conv2D(
             d_model,
             (2, 2),
             strides=(2, 2),
             padding="same",
             use_bias=False,
+            activation='linear'
+        )
+
+        self.conv2 = tf.keras.layers.Conv2D(
+            d_model,
+            (2, 2),
+            strides=(1, 1),
+            padding="same",
+            activation='relu',
+            use_bias=True,
         )
 
         self.use_conv = use_conv
@@ -57,11 +119,13 @@ class PositionEmbeddingModel(tf.keras.Model):
         inputs = tf.cast(inputs, tf.int8)
 
         # print(inputs.shape)
-        x = tf.one_hot(inputs, 10, axis=-1)
+        #x = tf.one_hot(inputs, 10, axis=-1)
+        x = self.class_embedding_fn(inputs)
         if len(x.shape) == 5:
             x = tf.squeeze(x, -2)
-
+        x = tf.nn.relu(x)
         if self.use_conv:
+            #x = self.dense(x)
             x = self.conv(x)
         else:
             x = self.dense(x)
@@ -78,12 +142,13 @@ class PositionEmbeddingModel(tf.keras.Model):
         position_embedding_y = tf.expand_dims(
             position_embedding_y, 0
         )  # Shape: (1, max_width, d_model)
-        pos_x = position_embedding_x + position_embedding_y
+        pos_x = position_embedding_x  + position_embedding_y
         pos_x = pos_x[tf.newaxis, ...]
 
         x = pos_x + x
-
+        #x = self.feature_model(x)
         num_elements = x.shape[1] * x.shape[2]
+
         x = tf.reshape(x, (-1, num_elements, self.d_model))
 
         return x
@@ -174,11 +239,14 @@ class Encoder(tf.keras.layers.Layer):
 
     def call(self, x: tf.Tensor, training: bool = True) -> tf.Tensor:
         x = self.pos_embedding(x)
-
+        
+        x_out = []
         for i in range(self.num_layers):
             x = self.encoder_layers[i](x)
 
-        return x
+            x_out.append(x[:, -1])
+        #x_concat = tf.transpose(tf.stack(x_out), (1, 0, 2)) 
+        return x 
 
 
 class ImageTransformerModel(tf.keras.Model):
@@ -197,6 +265,7 @@ class ImageTransformerModel(tf.keras.Model):
         self.num_layers = num_layers
         self.max_height = max_height
         self.max_width = max_width
+        self.num_layers_decoder = self.num_layers * 2
 
         self.encoder_block = self._build_encoder()
         self.decoder = self._build_decoder()
@@ -205,6 +274,23 @@ class ImageTransformerModel(tf.keras.Model):
         )
         self.dense1 = tf.keras.layers.Dense(32, activation="relu")
         self.dense2 = tf.keras.layers.Dense(10, activation="linear")
+        self.avgpool1d = tf.keras.layers.GlobalAveragePooling1D()
+        self.dense8x8 =  tf.keras.layers.Dense(8*8*self.d_model, activation="relu")
+        self.dense4x4 =  tf.keras.layers.Dense(4*4*self.d_model, activation="relu")
+        self.bn1 = layers.BatchNormalization()
+        self.bn2 = layers.BatchNormalization()
+        self.bn3 = layers.BatchNormalization()
+        self.bn4 = layers.BatchNormalization()
+        self.bn5 = layers.BatchNormalization()
+        self.bn6 = layers.BatchNormalization()
+
+        self.upsample1 = layers.Conv2DTranspose(d_model, (3, 3), strides=(2, 2), padding='valid', activation='relu')
+        self.upsample2 = layers.Conv2DTranspose(d_model, (3, 3), strides=(2, 2), padding='valid', activation='relu')
+        self.upsample3 = layers.Conv2DTranspose(d_model, (3, 3), strides=(1, 1), padding='same', activation='relu')
+        self.upsample4 = layers.Conv2DTranspose(d_model, (2, 2), strides=(1, 1), padding='valid', activation='relu')
+        self.upsample5 = layers.Conv2DTranspose(10, (3, 3), strides=(1, 1), padding='same', activation='linear')
+
+
 
     def _build_decoder(self):
         return Decoder(
@@ -218,7 +304,7 @@ class ImageTransformerModel(tf.keras.Model):
 
     def _build_encoder(self):
         return Encoder(
-            num_layers=self.num_layers,
+            num_layers=self.num_layers*2,
             d_model=self.d_model,
             num_heads=self.num_heads,
             d_ff=self.d_ff,
@@ -240,24 +326,43 @@ class ImageTransformerModel(tf.keras.Model):
         encoder_features = self.encoder_block(inputs_encoder)
 
         # Decoder
-        decoder_input = self.pos_embedding(inputs_decoder)
-        x = self.decoder(decoder_input, encoder_features)
+        x_dec = self.pos_embedding(inputs_decoder)
 
-        # Reshape to [batch, height, width, depth]
-        latent_shape = int(np.sqrt(x.shape[1]))
-        x = tf.keras.layers.Reshape((self.target_shape[0], self.target_shape[1], self.d_model))(x)
+        #x = encoder_features[:, -20:, -20:]
+
+        #decoder_input = self.encoder_block(inputs_decoder)
+        
+        decoder_out  = self.decoder(x_dec, encoder_features)
+        #x = decoder_out 
+        ## Reshape to [batch, height, width, depth]
+        #latent_shape = int(np.sqrt(x.shape[1]))
+        #x = tf.keras.layers.Flatten()(x)
+        #x = self.dense4x4(x)
+
+        #x = self.avgpool1d(encoder_features)
+        #x = self.dense4x4(x)
+        x = tf.keras.layers.Reshape((20,20, self.d_model))(decoder_out)
+        #x = self.upsample1(x)
+        #x = self.bn1(x)
+        #x = self.upsample2(x)
+        #x = self.bn2(x)
+        #x = self.upsample3(x)
+        #x = self.bn3(x)
+        #x = self.upsample4(x)
+        #x = self.bn4(x)
+        #x = self.upsample5(x)
 
         x = self.dense1(x)
-        x = self.dense2(x)
+        #x = self.dense2(x)
 
         return x
 
-    def compile_model(self, initial_learning_rate=1e-4, decay_steps=10000, decay_rate=0.9):
+    def compile_model(self, initial_learning_rate=1e-4, decay_steps=10000, decay_rate=0.99):
         loss = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True)
         lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(
             initial_learning_rate=initial_learning_rate, decay_steps=decay_steps, decay_rate=decay_rate
         )
-        opt = tf.keras.optimizers.AdamW(learning_rate=1e-5)
+        opt = tf.keras.optimizers.AdamW(learning_rate=2e-5) # lr_schedule)
         self.compile(optimizer=opt, loss=loss, run_eagerly=False)
 
     def summary(self):
@@ -273,18 +378,18 @@ class ImageTransformerModel(tf.keras.Model):
 
 
 # Usage
-input_shape = (20 * 3, 20 * 2)
+input_shape = (20 * 4, 20 * 2)
 target_height = 20
 target_width = 20
-max_height = 20 * 3
+max_height = 20 * 4
 max_width = 20 * 2
-d_model = 64
+d_model = 64 
 d_ff = 64
 num_heads = 8
 key_dim = 16
 attention_dropout = 0.1
 num_attention_heads = 8
-num_layers = 2
+num_layers =8 
 
 transformer_model = ImageTransformerModel(
     input_shape=input_shape,
@@ -366,7 +471,7 @@ def load_data(source_folder, target_source_folder, target_folder):
 
     dataset = (
         dataset.shuffle(buffer_size=1024)
-        .batch(10)
+        .batch(32)
         .prefetch(buffer_size=tf.data.AUTOTUNE)
     )
     
@@ -394,7 +499,7 @@ val_dataset = load_data(val_source_folder, val_target_source_folder, val_target_
 
 keras_model.fit(
     train_dataset,
-    epochs=50,
+    epochs=100,
     validation_data=val_dataset,
     callbacks=[],
 )
@@ -444,11 +549,19 @@ def map_predictions_to_colors(prediction_image):
 
 
 # Function to make predictions and save visualizations
-def predict_and_save_visualizations(model, source_folder, save_folder, num_images=10):
+def predict_and_save_visualizations(model, source_folder, decoder_source_folder, save_folder, num_images=10):
     source_images = sorted(
         [
             os.path.join(source_folder, f)
             for f in os.listdir(source_folder)
+            if f.endswith(".png")
+        ]
+    )
+
+    decoder_source_images = sorted(
+        [
+            os.path.join(decoder_source_folder, f)
+            for f in os.listdir(decoder_source_folder)
             if f.endswith(".png")
         ]
     )
@@ -458,10 +571,13 @@ def predict_and_save_visualizations(model, source_folder, save_folder, num_image
 
     for i in range(min(num_images, len(source_images))):
         source_image_path = source_images[i]
+        decoder_source_image_path = decoder_source_images[i]
         source_image = load_image(source_image_path)
+        decoder_source_image = load_image(decoder_source_image_path)
         source_image_expanded = tf.expand_dims(source_image, 0)  # Add batch dimension
+        decoder_source_image_expanded = tf.expand_dims(decoder_source_image, 0)  # Add batch dimension
 
-        prediction = model.predict(source_image_expanded)
+        prediction = model.predict([source_image_expanded, decoder_source_image_expanded])
         prediction_image = tf.squeeze(prediction, 0)  # Remove batch dimension
         prediction_image = prediction_image.numpy()  # Convert to numpy array
 
@@ -492,6 +608,7 @@ def predict_and_save_visualizations(model, source_folder, save_folder, num_image
 save_folder = "pred"
 
 source_folder = "/root/arc/largest_val"
+source_target_source = "/root/arc/largest_val_source"
 # Assuming keras_model is your trained model
-predict_and_save_visualizations(keras_model, source_folder, save_folder, num_images=10)
+predict_and_save_visualizations(keras_model, source_folder, source_target_source, save_folder, num_images=22)
 keras_model.save("saved_model.h5")
