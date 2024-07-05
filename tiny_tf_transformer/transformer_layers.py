@@ -157,12 +157,20 @@ class DecoderLayer(tf.keras.layers.Layer):
         attention_dropout_rate=0.1,
         ff_dropout_rate=0.1,
         ff_activation="relu",
+        use_causal=True
     ):
         super(DecoderLayer, self).__init__()
+        
+        if use_causal:
+            self.attention = CausalAttention(
+                num_heads, d_model, attention_dropout_rate
+            )
+        else:
+            self.attention =   SelfAttention(
+                num_heads, d_model, attention_dropout_rate
+            )
 
-        self.caual_attention = CausalAttention(
-            num_heads, d_model, attention_dropout_rate
-        )
+            
         self.cross_attention = CrossAttention(
             num_heads, d_model, attention_dropout_rate
         )
@@ -175,7 +183,7 @@ class DecoderLayer(tf.keras.layers.Layer):
         )
 
     def call(self, x: tf.Tensor, enc_output: tf.Tensor) -> tf.Tensor:
-        x = self.caual_attention(x)
+        x = self.attention(x)
         x = self.cross_attention(x, enc_output)
         x = self.ffn(x)
 

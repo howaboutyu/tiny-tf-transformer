@@ -84,13 +84,13 @@ class PositionEmbeddingModel(tf.keras.Model):
         self.feature_model = CustomConvModel(d_model=d_model)
 
         self.position_embedding_x_fn = tf.keras.layers.Embedding(
-            input_dim=max_width, output_dim=d_model
+            input_dim=60, output_dim=d_model//2
         )
         self.position_embedding_y_fn = tf.keras.layers.Embedding(
-            input_dim=max_height, output_dim=d_model
+            input_dim=60, output_dim=d_model//2
         )
         self.class_embedding_fn = tf.keras.layers.Embedding(
-            input_dim=10, output_dim=d_model
+            input_dim=11, output_dim=d_model
         )
 
         self.dense = tf.keras.layers.Dense(d_model, activation='relu', use_bias=True)
@@ -101,7 +101,7 @@ class PositionEmbeddingModel(tf.keras.Model):
             strides=(2, 2),
             padding="same",
             use_bias=False,
-            activation='linear'
+            activation='relu'
         )
 
         self.conv2 = tf.keras.layers.Conv2D(
@@ -124,26 +124,30 @@ class PositionEmbeddingModel(tf.keras.Model):
         if len(x.shape) == 5:
             x = tf.squeeze(x, -2)
         x = tf.nn.relu(x)
-        if self.use_conv:
+        #if self.use_conv:
             #x = self.dense(x)
-            x = self.conv(x)
-        else:
-            x = self.dense(x)
+        x = self.conv(x)
+        #else:
+        #    x = self.dense(x)
 
         w = x.shape[1]
         h = x.shape[2]
 
-        position_embedding_x = self.position_embedding_x_fn(tf.range(self.max_height))
-        position_embedding_y = self.position_embedding_y_fn(tf.range(self.max_width))
+        position_embedding_x = self.position_embedding_x_fn(tf.range(self.max_width))
+        position_embedding_y = self.position_embedding_y_fn(tf.range(self.max_height))
 
         position_embedding_x = tf.expand_dims(
-            position_embedding_x, 1
+            position_embedding_x, 0
         )  # Shape: (max_height, 1, d_model)
+
+        position_embedding_x = tf.repeat(position_embedding_x, self.max_height, 0)
         position_embedding_y = tf.expand_dims(
-            position_embedding_y, 0
+            position_embedding_y, 1
         )  # Shape: (1, max_width, d_model)
-        pos_x = position_embedding_x  + position_embedding_y
+        position_embedding_y = tf.repeat(position_embedding_y, self.max_width, 1)
+        pos_x = tf.concat([position_embedding_x  , position_embedding_y], -1)
         pos_x = pos_x[tf.newaxis, ...]
+
 
         x = pos_x + x
         #x = self.feature_model(x)
@@ -178,6 +182,7 @@ class Decoder(tf.keras.layers.Layer):
                 d_ff=d_ff,
                 attention_dropout_rate=attention_dropout_rate,
                 ff_dropout_rate=ff_dropout_rate,
+                use_causal=False
             )
             for _ in range(num_layers)
         ]
@@ -265,12 +270,12 @@ class ImageTransformerModel(tf.keras.Model):
         self.num_layers = num_layers
         self.max_height = max_height
         self.max_width = max_width
-        self.num_layers_decoder = self.num_layers * 2
+        self.num_layers_decoder = self.num_layers #* 2
 
         self.encoder_block = self._build_encoder()
         self.decoder = self._build_decoder()
         self.pos_embedding = PositionEmbeddingModel(
-            max_height=target_shape[0], max_width=target_shape[1], d_model=d_model, use_conv=False
+            max_height=target_shape[0]//2, max_width=target_shape[1]//2, d_model=d_model, use_conv=False
         )
         self.dense1 = tf.keras.layers.Dense(32, activation="relu")
         self.dense2 = tf.keras.layers.Dense(10, activation="linear")
@@ -310,8 +315,8 @@ class ImageTransformerModel(tf.keras.Model):
             d_ff=self.d_ff,
             attention_dropout_rate=self.attention_dropout,
             ff_dropout_rate=0.1,
-            image_height=self.input_shape[0]//2,
-            image_width=self.input_shape[1]//2,
+            image_height=self.input_shape[0] //2,
+            image_width=self.input_shape[1] //2,
         )
 
     def call(self, inputs):
@@ -323,10 +328,15 @@ class ImageTransformerModel(tf.keras.Model):
             inputs_decoder = inputs[1]
 
         # Encoder
+
+        #if 0:
         encoder_features = self.encoder_block(inputs_encoder)
 
         # Decoder
         x_dec = self.pos_embedding(inputs_decoder)
+
+        encoder_features = self.avgpool1d(encoder_features)
+        encoder_features = tf.keras.layers.Reshape(( 1, self.d_model) )(encoder_features)
 
         #x = encoder_features[:, -20:, -20:]
 
@@ -336,24 +346,25 @@ class ImageTransformerModel(tf.keras.Model):
         #x = decoder_out 
         ## Reshape to [batch, height, width, depth]
         #latent_shape = int(np.sqrt(x.shape[1]))
-        #x = tf.keras.layers.Flatten()(x)
-        #x = self.dense4x4(x)
+        x = tf.keras.layers.Flatten()(encoder_features)
+        x = self.dense4x4(x)
 
         #x = self.avgpool1d(encoder_features)
         #x = self.dense4x4(x)
-        x = tf.keras.layers.Reshape((20,20, self.d_model))(decoder_out)
-        #x = self.upsample1(x)
-        #x = self.bn1(x)
-        #x = self.upsample2(x)
-        #x = self.bn2(x)
-        #x = self.upsample3(x)
-        #x = self.bn3(x)
-        #x = self.upsample4(x)
-        #x = self.bn4(x)
+        x = tf.keras.layers.Reshape((4,4, self.d_model))(x)
+        x = self.upsample1(x)
+        #x = tf.keras.layers.Reshape((20,20, self.d_model))(decoder_out)
+        x = self.bn1(x)
+        x = self.upsample2(x)
+        x = self.bn2(x)
+        x = self.upsample3(x)
+        x = self.bn3(x)
+        x = self.upsample4(x)
+        x = self.bn4(x)
         #x = self.upsample5(x)
 
         x = self.dense1(x)
-        #x = self.dense2(x)
+        x = self.dense2(x)
 
         return x
 
@@ -383,13 +394,13 @@ target_height = 20
 target_width = 20
 max_height = 20 * 4
 max_width = 20 * 2
-d_model = 64 
+d_model =64
 d_ff = 64
 num_heads = 8
 key_dim = 16
 attention_dropout = 0.1
 num_attention_heads = 8
-num_layers =8 
+num_layers =2 
 
 transformer_model = ImageTransformerModel(
     input_shape=input_shape,
@@ -471,7 +482,7 @@ def load_data(source_folder, target_source_folder, target_folder):
 
     dataset = (
         dataset.shuffle(buffer_size=1024)
-        .batch(32)
+        .batch(128)
         .prefetch(buffer_size=tf.data.AUTOTUNE)
     )
     
@@ -495,6 +506,8 @@ val_dataset = load_data(val_source_folder, val_target_source_folder, val_target_
 
 # Train the model
 # early_stopping = EarlyStopping(monitor='val_loss', patience=5, restore_best_weights=True)
+
+#keras_model.load_weights('saved_model.h5')
 
 
 keras_model.fit(
