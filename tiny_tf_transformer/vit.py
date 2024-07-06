@@ -121,12 +121,11 @@ class PositionEmbeddingModel(tf.keras.Model):
         # print(inputs.shape)
         #x = tf.one_hot(inputs, 10, axis=-1)
         x = self.class_embedding_fn(inputs)
-        if len(x.shape) == 5:
-            x = tf.squeeze(x, -2)
-        x = tf.nn.relu(x)
+        
+        #x = tf.nn.relu(x)
         #if self.use_conv:
             #x = self.dense(x)
-        x = self.conv(x)
+        #x = self.conv(x)
         #else:
         #    x = self.dense(x)
 
@@ -148,7 +147,7 @@ class PositionEmbeddingModel(tf.keras.Model):
         pos_x = tf.concat([position_embedding_x  , position_embedding_y], -1)
         pos_x = pos_x[tf.newaxis, ...]
 
-
+        import pdb; pdb.set_trace()
         x = pos_x + x
         #x = self.feature_model(x)
         num_elements = x.shape[1] * x.shape[2]
@@ -189,9 +188,13 @@ class Decoder(tf.keras.layers.Layer):
 
         self.dropout = tf.keras.layers.Dropout(ff_dropout_rate)
 
-    def call(self, x: tf.Tensor, enc_output: tf.Tensor) -> tf.Tensor:
+    def call(self, x: tf.Tensor, enc_output: tf.Tensor=None) -> tf.Tensor:
         for i in range(self.num_layers):
-            x = self.decoder_layers[i](x, enc_output)
+            if enc_output is not None:
+                x = self.decoder_layers[i](x, enc_output)
+
+            else:
+                x = self.decoder_layers[i](x, x)
 
         return x
 
@@ -275,7 +278,7 @@ class ImageTransformerModel(tf.keras.Model):
         self.encoder_block = self._build_encoder()
         self.decoder = self._build_decoder()
         self.pos_embedding = PositionEmbeddingModel(
-            max_height=target_shape[0]//2, max_width=target_shape[1]//2, d_model=d_model, use_conv=False
+            max_height=target_shape[0], max_width=target_shape[1], d_model=d_model, use_conv=False
         )
         self.dense1 = tf.keras.layers.Dense(32, activation="relu")
         self.dense2 = tf.keras.layers.Dense(10, activation="linear")
@@ -320,6 +323,25 @@ class ImageTransformerModel(tf.keras.Model):
         )
 
     def call(self, inputs):
+        # if isinstance(inputs, dict):
+        #     inputs_encoder = inputs['input']
+        #     inputs_decoder = inputs['decoder_input']
+        # else:
+        #     inputs_encoder = inputs[0]
+        #     inputs_decoder = inputs[1]
+
+        x = self.pos_embedding(inputs[0])
+
+        x = self.decoder(x)
+
+        x = tf.keras.layers.Reshape((self.target_shape[1],self.target_shape[0], self.d_model))(x)
+
+        x = self.dense2(x)
+
+        return x
+
+
+    def _call(self, inputs):
         if isinstance(inputs, dict):
             inputs_encoder = inputs['input']
             inputs_decoder = inputs['decoder_input']
@@ -383,7 +405,8 @@ class ImageTransformerModel(tf.keras.Model):
                 'input': inputs_encoder,
                 'input_decoder': inputs_decoder
                 }
-        model = tf.keras.Model(inputs=[inputs_encoder, inputs_decoder], outputs=self.call([inputs_encoder, inputs_decoder]))
+        #model = tf.keras.Model(inputs=[inputs_encoder, inputs_decoder], outputs=self.call([inputs_encoder, inputs_decoder]))
+        model = tf.keras.Model(inputs=[ inputs_decoder], outputs=self.call([ inputs_decoder]))
         model.summary()
 
 
@@ -473,7 +496,8 @@ def load_data(source_folder, target_source_folder, target_folder):
 
     input_ds = tf.data.Dataset.zip((source_dataset, target_source_dataset))
 
-    dataset = tf.data.Dataset.zip((input_ds, target_dataset))
+    #dataset = tf.data.Dataset.zip((input_ds, target_dataset))
+    dataset = tf.data.Dataset.zip((target_source_dataset, target_source_dataset))
 
     def generator(inputs, output):
         return {"input": inputs[0], "decoder_input": inputs[1]}, output
