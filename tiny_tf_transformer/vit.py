@@ -115,13 +115,16 @@ class PositionEmbeddingModel(tf.keras.Model):
 
         self.use_conv = use_conv
 
-    def call(self, inputs):
-        inputs = tf.cast(inputs, tf.int8)
+    def call(self, inputs, use_int_embedding=True):
 
         # print(inputs.shape)
         #x = tf.one_hot(inputs, 10, axis=-1)
-        x = self.class_embedding_fn(inputs)
-        
+        if use_int_embedding:
+            inputs = tf.cast(inputs, tf.int8)
+            x = self.class_embedding_fn(inputs)
+
+        else:
+            x = inputs 
         #x = tf.nn.relu(x)
         #if self.use_conv:
             #x = self.dense(x)
@@ -145,11 +148,17 @@ class PositionEmbeddingModel(tf.keras.Model):
         )  # Shape: (1, max_width, d_model)
         position_embedding_y = tf.repeat(position_embedding_y, self.max_width, 1)
         pos_x = tf.concat([position_embedding_x  , position_embedding_y], -1)
+        print('ps x shape', pos_x.shape)
+        print('x shape', x.shape)
         pos_x = pos_x[tf.newaxis, ...]
+        print('ps na x shape', pos_x.shape)
+        
+        if len(x.shape) == 5:
+            x = tf.squeeze(x, -2)
 
-        import pdb; pdb.set_trace()
         x = pos_x + x
         #x = self.feature_model(x)
+        print(x.shape)
         num_elements = x.shape[1] * x.shape[2]
 
         x = tf.reshape(x, (-1, num_elements, self.d_model))
@@ -245,8 +254,9 @@ class Encoder(tf.keras.layers.Layer):
 
         self.dropout = tf.keras.layers.Dropout(ff_dropout_rate)
 
-    def call(self, x: tf.Tensor, training: bool = True) -> tf.Tensor:
-        x = self.pos_embedding(x)
+    def call(self, x: tf.Tensor, training: bool = True, use_int_embedding=True) -> tf.Tensor:
+        #import pdb; pdb.set_trace()
+        x = self.pos_embedding(x, use_int_embedding=use_int_embedding)
         
         x_out = []
         for i in range(self.num_layers):
@@ -276,6 +286,7 @@ class ImageTransformerModel(tf.keras.Model):
         self.num_layers_decoder = self.num_layers #* 2
 
         self.encoder_block = self._build_encoder()
+        self.encoder_decoder_block = self._build_encoder()
         self.decoder = self._build_decoder()
         self.pos_embedding = PositionEmbeddingModel(
             max_height=target_shape[0], max_width=target_shape[1], d_model=d_model, use_conv=False
@@ -312,17 +323,19 @@ class ImageTransformerModel(tf.keras.Model):
 
     def _build_encoder(self):
         return Encoder(
-            num_layers=self.num_layers*2,
+            num_layers=self.num_layers,
             d_model=self.d_model,
             num_heads=self.num_heads,
             d_ff=self.d_ff,
             attention_dropout_rate=self.attention_dropout,
             ff_dropout_rate=0.1,
-            image_height=self.input_shape[0] //2,
-            image_width=self.input_shape[1] //2,
+            image_height=self.input_shape[0] ,
+            image_width=self.input_shape[1] ,
         )
 
     def call(self, inputs):
+
+
         # if isinstance(inputs, dict):
         #     inputs_encoder = inputs['input']
         #     inputs_decoder = inputs['decoder_input']
@@ -330,11 +343,18 @@ class ImageTransformerModel(tf.keras.Model):
         #     inputs_encoder = inputs[0]
         #     inputs_decoder = inputs[1]
 
-        x = self.pos_embedding(inputs[0])
+        #x = self.pos_embedding(inputs)
 
-        x = self.decoder(x)
+        x = self.encoder_block(inputs, use_int_embedding=True)
 
-        x = tf.keras.layers.Reshape((self.target_shape[1],self.target_shape[0], self.d_model))(x)
+
+        x_decoder = x[:, 0 ]
+
+        x = tf.keras.layers.RepeatVector(20 * 20 )(x_decoder)
+        x = tf.keras.layers.Reshape((20, 20, self.d_model))(x)
+        x = self.encoder_decoder_block(x, use_int_embedding=False )
+        x = tf.keras.layers.Reshape((20, 20, self.d_model))(x)
+
 
         x = self.dense2(x)
 
@@ -396,7 +416,7 @@ class ImageTransformerModel(tf.keras.Model):
             initial_learning_rate=initial_learning_rate, decay_steps=decay_steps, decay_rate=decay_rate
         )
         opt = tf.keras.optimizers.AdamW(learning_rate=2e-5) # lr_schedule)
-        self.compile(optimizer=opt, loss=loss, run_eagerly=False)
+        self.compile(optimizer=opt, loss=loss, run_eagerly=False, metrics=['accuracy'])
 
     def summary(self):
         inputs_encoder = tf.keras.layers.Input(shape=self.input_shape, name="input")
@@ -406,24 +426,25 @@ class ImageTransformerModel(tf.keras.Model):
                 'input_decoder': inputs_decoder
                 }
         #model = tf.keras.Model(inputs=[inputs_encoder, inputs_decoder], outputs=self.call([inputs_encoder, inputs_decoder]))
-        model = tf.keras.Model(inputs=[ inputs_decoder], outputs=self.call([ inputs_decoder]))
+        model = tf.keras.Model(inputs= inputs_decoder, outputs=self.call( inputs_decoder))
         model.summary()
 
 
 
 # Usage
 input_shape = (20 * 4, 20 * 2)
+input_shape = (20 , 20 )
 target_height = 20
 target_width = 20
-max_height = 20 * 4
-max_width = 20 * 2
+max_height = 20 
+max_width = 20 
 d_model =64
 d_ff = 64
 num_heads = 8
-key_dim = 16
+key_dim = 64 
 attention_dropout = 0.1
 num_attention_heads = 8
-num_layers =2 
+num_layers =4 
 
 transformer_model = ImageTransformerModel(
     input_shape=input_shape,
@@ -496,17 +517,27 @@ def load_data(source_folder, target_source_folder, target_folder):
 
     input_ds = tf.data.Dataset.zip((source_dataset, target_source_dataset))
 
+
+
+    def flip_horizontal(image):
+            return tf.image.flip_left_right(image)
+
+    # Create the dataset with the horizontal flip applied to the target images
+    flipped_target_dataset = target_source_dataset.map(lambda x: flip_horizontal(x))
+
+
     #dataset = tf.data.Dataset.zip((input_ds, target_dataset))
-    dataset = tf.data.Dataset.zip((target_source_dataset, target_source_dataset))
+    dataset = tf.data.Dataset.zip((target_source_dataset, flipped_target_dataset))
 
     def generator(inputs, output):
-        return {"input": inputs[0], "decoder_input": inputs[1]}, output
+        #return {"input": inputs[0], "decoder_input": inputs[1]}, output
+        return inputs, output
 
-    dataset = dataset.map(generator)
+    #dataset = dataset.map(generator)
 
     dataset = (
         dataset.shuffle(buffer_size=1024)
-        .batch(128)
+        .batch(55)
         .prefetch(buffer_size=tf.data.AUTOTUNE)
     )
     
